@@ -153,6 +153,13 @@ C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_bootloader_forma
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_bootloader_format/CMakeFiles/install/local.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_bootloader_format/CMakeFiles/install/strip.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/app_update/CMakeFiles/__idf_app_update.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/app_update/CMakeFiles/blank_ota_data.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/app_update/CMakeFiles/read-otadata.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/app_update/CMakeFiles/read_otadata.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/app_update/CMakeFiles/erase-otadata.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/app_update/CMakeFiles/erase_otadata.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/app_update/CMakeFiles/otadata-flash.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/app_update/CMakeFiles/encrypted-otadata-flash.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/app_update/CMakeFiles/edit_cache.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/app_update/CMakeFiles/rebuild_cache.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/app_update/CMakeFiles/list_install_components.dir
@@ -693,6 +700,7 @@ C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_https_server/CMa
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_https_server/CMakeFiles/install.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_https_server/CMakeFiles/install/local.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_https_server/CMakeFiles/install/strip.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_psram/CMakeFiles/__idf_esp_psram.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_psram/CMakeFiles/edit_cache.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_psram/CMakeFiles/rebuild_cache.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_psram/CMakeFiles/list_install_components.dir
@@ -835,6 +843,13 @@ C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/wifi_provisioning/CM
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/wifi_provisioning/CMakeFiles/install.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/wifi_provisioning/CMakeFiles/install/local.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/wifi_provisioning/CMakeFiles/install/strip.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/epdiy/CMakeFiles/__idf_epdiy.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/epdiy/CMakeFiles/edit_cache.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/epdiy/CMakeFiles/rebuild_cache.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/epdiy/CMakeFiles/list_install_components.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/epdiy/CMakeFiles/install.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/epdiy/CMakeFiles/install/local.dir
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/epdiy/CMakeFiles/install/strip.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/main/CMakeFiles/__idf_main.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/main/CMakeFiles/edit_cache.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/main/CMakeFiles/rebuild_cache.dir

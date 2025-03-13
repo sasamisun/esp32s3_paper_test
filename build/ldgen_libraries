@@ -67,6 +67,7 @@ C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_http_client/libe
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_http_server/libesp_http_server.a
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_https_ota/libesp_https_ota.a
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_https_server/libesp_https_server.a
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_psram/libesp_psram.a
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_lcd/libesp_lcd.a
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/protobuf-c/libprotobuf-c.a
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/protocomm/libprotocomm.a
@@ -83,4 +84,5 @@ C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/spiffs/libspiffs.a
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/touch_element/libtouch_element.a
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/usb/libusb.a
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/wifi_provisioning/libwifi_provisioning.a
+C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/epdiy/libepdiy.a
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/main/libmain.a
