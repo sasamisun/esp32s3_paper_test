@@ -272,13 +272,6 @@ C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/soc/CMakeFiles/list_
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/soc/CMakeFiles/install.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/soc/CMakeFiles/install/local.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/soc/CMakeFiles/install/strip.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_security/CMakeFiles/__idf_esp_security.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_security/CMakeFiles/edit_cache.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_security/CMakeFiles/rebuild_cache.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_security/CMakeFiles/list_install_components.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_security/CMakeFiles/install.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_security/CMakeFiles/install/local.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_security/CMakeFiles/install/strip.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_hw_support/CMakeFiles/__idf_esp_hw_support.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_hw_support/CMakeFiles/edit_cache.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/esp_hw_support/CMakeFiles/rebuild_cache.dir
@@ -802,13 +795,6 @@ C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/perfmon/CMakeFiles/l
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/perfmon/CMakeFiles/install.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/perfmon/CMakeFiles/install/local.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/perfmon/CMakeFiles/install/strip.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/rt/CMakeFiles/__idf_rt.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/rt/CMakeFiles/edit_cache.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/rt/CMakeFiles/rebuild_cache.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/rt/CMakeFiles/list_install_components.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/rt/CMakeFiles/install.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/rt/CMakeFiles/install/local.dir
-C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/rt/CMakeFiles/install/strip.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/spiffs/CMakeFiles/__idf_spiffs.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/spiffs/CMakeFiles/edit_cache.dir
 C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/spiffs/CMakeFiles/rebuild_cache.dir

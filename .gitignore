@@ -1,6 +1,7 @@
 .pio
 .vscode
 build/
+build/*
 build.clang
 sdkconfig.old
 sdkconfig
