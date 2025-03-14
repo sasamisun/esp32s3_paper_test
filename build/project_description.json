@@ -1,7 +1,7 @@
 {
     "version":            "1.1",
     "project_name":       "esp32s3_paper_test",
-    "project_version":    "14296ed-dirty",
+    "project_version":    "f86a24f-dirty",
     "project_path":       "C:/Users/amiha/esp_project/esp32s3_paper_test",
     "idf_path":           "C:/Users/amiha/esp/v5.3.2/esp-idf",
     "build_dir":          "C:/Users/amiha/esp_project/esp32s3_paper_test/build",
