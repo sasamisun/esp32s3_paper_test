@@ -63,6 +63,11 @@ static lcd_bus_config_t lcd_config = {
     .data[7] = D7,
 };
 
+ // ED047TC1 display specs (corrected orientation)
+ #define DISPLAY_WIDTH 960
+ #define DISPLAY_HEIGHT 540
+ #define DISPLAY_DEPTH 4 // 16 grayscale levels (4 bits)
+
 static void epd_board_init(uint32_t epd_row_width) {
     gpio_hold_dis(CKH);  // free CKH after wakeup
 
@@ -76,7 +81,8 @@ static void epd_board_init(uint32_t epd_row_width) {
     gpio_set_level(EPD_EN, 0);
     gpio_set_level(BST_EN, 0);
 
-    const EpdDisplay_t* display = epd_get_display();
+    //const EpdDisplay_t* display = epd_get_display();
+    const EpdDisplay_t* display = &ED047TC1;
 
     LcdEpdConfig_t config = {
         .pixel_clock = display->bus_speed * 1000 * 1000,
