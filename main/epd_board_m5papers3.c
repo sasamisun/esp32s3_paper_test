@@ -63,12 +63,7 @@ static lcd_bus_config_t lcd_config = {
     .data[7] = D7,
 };
 
- // ED047TC1 display specs (corrected orientation)
- #define DISPLAY_WIDTH 960
- #define DISPLAY_HEIGHT 540
- #define DISPLAY_DEPTH 4 // 16 grayscale levels (4 bits)
-
-static void epd_board_init(uint32_t epd_row_width) {
+static void m5_board_init() {
     gpio_hold_dis(CKH);  // free CKH after wakeup
 
     gpio_set_direction(EPD_SPV, GPIO_MODE_OUTPUT);
@@ -81,8 +76,8 @@ static void epd_board_init(uint32_t epd_row_width) {
     gpio_set_level(EPD_EN, 0);
     gpio_set_level(BST_EN, 0);
 
-    //const EpdDisplay_t* display = epd_get_display();
-    const EpdDisplay_t* display = &ED047TC1;
+    const EpdDisplay_t* display = epd_get_display();
+    //const EpdDisplay_t* display = &ED047TC1;
 
     LcdEpdConfig_t config = {
         .pixel_clock = display->bus_speed * 1000 * 1000,
@@ -95,7 +90,7 @@ static void epd_board_init(uint32_t epd_row_width) {
     epd_lcd_init(&config, display->width, display->height);
 }
 
-static void epd_board_deinit() {
+static void m5_board_deinit() {
     epd_lcd_deinit();
 
     gpio_set_level(EPD_XLE, 0);
@@ -104,7 +99,7 @@ static void epd_board_deinit() {
     gpio_set_level(BST_EN, 0);
 }
 
-static void epd_board_set_ctrl(epd_ctrl_state_t* state, const epd_ctrl_state_t* const mask) {
+static void m5_board_set_ctrl(epd_ctrl_state_t* state, const epd_ctrl_state_t* const mask) {
   if (state->ep_sth) {
     gpio_set_level(STH, 1);
   } else {
@@ -124,7 +119,7 @@ static void epd_board_set_ctrl(epd_ctrl_state_t* state, const epd_ctrl_state_t* 
   }
 }
 
-static void epd_board_poweron(epd_ctrl_state_t* state) {
+static void m5_board_poweron(epd_ctrl_state_t* state) {
     gpio_set_level(EPD_EN, 1);
     vTaskDelay(1 / portTICK_PERIOD_MS);
     gpio_set_level(BST_EN, 1);
@@ -133,7 +128,7 @@ static void epd_board_poweron(epd_ctrl_state_t* state) {
     gpio_set_level(EPD_SPV, 1);
 }
 
-static void epd_board_poweroff(epd_ctrl_state_t* state) {
+static void m5_board_poweroff(epd_ctrl_state_t* state) {
   // gpio_set_level(BST_EN,0);
   // vTaskDelay(1 / portTICK_PERIOD_MS);
   // gpio_set_level(EPD_EN,0);
@@ -141,18 +136,18 @@ static void epd_board_poweroff(epd_ctrl_state_t* state) {
   gpio_set_level(EPD_SPV,0);
 }
 
-static float epd_board_ambient_temperature() {
+static float m5_board_ambient_temperature() {
     return 20;
 }
 
 const EpdBoardDefinition epd_board_m5papers3 = {
-    .init = epd_board_init,
-    .deinit = epd_board_deinit,
-    .set_ctrl = epd_board_set_ctrl,
-    .poweron = epd_board_poweron,
-    .poweroff = epd_board_poweroff,
+    .init = m5_board_init,
+    .deinit = m5_board_deinit,
+    .set_ctrl = m5_board_set_ctrl,
+    .poweron = m5_board_poweron,
+    .poweroff = m5_board_poweroff,
 
-    .get_temperature = epd_board_ambient_temperature,
+    .get_temperature = m5_board_ambient_temperature,
     .set_vcom = NULL,
 
     // unimplemented for now, but shares v6 implementation

@@ -1,7 +1,7 @@
 {
     "version":            "1.1",
     "project_name":       "esp32s3_paper_test",
-    "project_version":    "7f64902-dirty",
+    "project_version":    "7cea89f-dirty",
     "project_path":       "C:/Users/amiha/esp_project/esp32s3_paper_test",
     "idf_path":           "C:/Users/amiha/esp/v5.3.2/esp-idf",
     "build_dir":          "C:/Users/amiha/esp_project/esp32s3_paper_test/build",
@@ -1195,7 +1195,7 @@
             "managed_reqs": [],
             "managed_priv_reqs": [],
             "file": "C:/Users/amiha/esp_project/esp32s3_paper_test/build/esp-idf/main/libmain.a",
-            "sources": [ "C:/Users/amiha/esp_project/esp32s3_paper_test/main/epd_main.c", "C:/Users/amiha/esp_project/esp32s3_paper_test/main/epd_board_m5papers3.c", "C:/Users/amiha/esp_project/esp32s3_paper_test/main/epdiy_ED047TC1.c" ],
+            "sources": [ "C:/Users/amiha/esp_project/esp32s3_paper_test/main/epd_main.c", "C:/Users/amiha/esp_project/esp32s3_paper_test/main/epd_board_m5papers3.c" ],
             "include_dirs": [ "." ]
         },
         "mbedtls": {
