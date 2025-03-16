@@ -3,6 +3,7 @@ idf_component_register(
     SRCS 
         "epd_main.c" 
         "epd_board_m5papers3.c"
+        "epd_wrapper.c"
     PRIV_REQUIRES 
         "epdiy" 
         "driver" 

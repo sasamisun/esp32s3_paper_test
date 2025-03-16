@@ -1,163 +1,166 @@
 /*
  * ESP32S3 with ED047TC1 E-Paper Display Example using epdiy 2.0
+ * with the EPD Wrapper Library
  */
 
-#include <stdio.h>
-#include <string.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_system.h"
-#include "esp_log.h"
-#include "esp_heap_caps.h"
-
-// epdiy library headers for version 2.0
-#include "epdiy.h"
-#include "epd_highlevel.h"
-#include "epd_board_m5papers3.h"
-
-// ED047TC1 display specs (corrected orientation)
-#define DISPLAY_WIDTH 960
-#define DISPLAY_HEIGHT 540
-#define DISPLAY_DEPTH 4 // 16 grayscale levels (4 bits)
-
-#include "ayamelogo4bit.h"
-
-// For debugging
-static const char *TAG = "epd_example";
-
-void app_main(void)
-{
-    // 表示状態を保持する変数
-    EpdiyHighlevelState hl;
-
-    ESP_LOGI(TAG, "Starting ED047TC1 E-Paper example with epdiy 2.0");
-
-    // ディスプレイの初期化
-    ESP_LOGI(TAG, "Initializing ED047TC1 display");
-    epd_init(&epd_board_m5papers3, &ED047TC1, EPD_LUT_64K);
-    hl = epd_hl_init(&epdiy_ED047TC1);
-
-    // フレームバッファのメモリ確保
-    uint8_t *fb = epd_hl_get_framebuffer(&hl);
-
-    // 電源ON
-    epd_poweron();
-
-    // 画面を完全に消去するための複数回のリフレッシュ
-    for (int clear_count = 0; clear_count < 3; clear_count++) {
-        ESP_LOGI(TAG, "Clear cycle %d/3", clear_count + 1);
-        
-        // フレームバッファを白で塗りつぶし (0xFF)
-        memset(fb, 0xFF, DISPLAY_WIDTH * DISPLAY_HEIGHT / 2);
-        
-        // 全面アップデートモードで更新
-        ESP_LOGI(TAG, "Updating display with white");
-        epd_hl_update_screen(&hl, MODE_GC16, epd_board_m5papers3.get_temperature());
-        
-        // 少し待機
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        
-        // 異なるパターンでもう一度更新（消去の効果を高めるため）
-        if (clear_count == 0) {
-            // 一回目は黒で塗りつぶし
-            memset(fb, 0x00, DISPLAY_WIDTH * DISPLAY_HEIGHT / 2);
-            ESP_LOGI(TAG, "Updating display with black");
-            epd_hl_update_screen(&hl, MODE_GC16, epd_board_m5papers3.get_temperature());
-            
-            vTaskDelay(500 / portTICK_PERIOD_MS);
-        }
-    }
-
-    // 最終的に白で完全にクリア
-    memset(fb, 0xFF, DISPLAY_WIDTH * DISPLAY_HEIGHT / 2);
-    ESP_LOGI(TAG, "Final clear to white");
-    epd_hl_update_screen(&hl, MODE_GC16, epd_board_m5papers3.get_temperature());
-
-    ESP_LOGI(TAG, "Screen clearing complete");
-
-    
-    // 基本図形の描画
-    ESP_LOGI(TAG, "Drawing test patterns");
-
-    // 中央に大きな円を描画
-    int center_x = DISPLAY_WIDTH / 2;
-    int center_y = DISPLAY_HEIGHT / 2;
-    int radius = 100;
-    epd_draw_circle(center_x, center_y, radius, 0, fb);
-
-    // 対角線を描画
-    epd_draw_line(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, 0, fb);
-    epd_draw_line(0, DISPLAY_HEIGHT, DISPLAY_WIDTH, 0, 0, fb);
-        // 中央付近に小さな円を何個か描画
-        epd_fill_circle(center_x - 50, center_y - 50, 20, 0, fb);
-        epd_fill_circle(center_x + 50, center_y - 50, 20, 0, fb);
-        epd_fill_circle(center_x, center_y + 50, 30, 0, fb);
-    // 枠線を描画
-    EpdRect border = {
-        .x = 10,
-        .y = 10,
-        .width = DISPLAY_WIDTH - 20,
-        .height = DISPLAY_HEIGHT - 20};
-    epd_draw_rect(border, 0, fb);
-
-    // ロゴを描画
-    ESP_LOGI(TAG, "Drawing Ayame logo");
-
-    // 右上にロゴを配置
-    int logo_x = DISPLAY_WIDTH - LOGO_WIDTH - 20;
-    int logo_y = 20;
-
-    // ロゴ領域の定義
-    EpdRect logo_area = {
-        .x = logo_x,
-        .y = logo_y,
-        .width = LOGO_WIDTH,
-        .height = LOGO_HEIGHT};
-
-    // フレームバッファにロゴをコピー
-    epd_copy_to_framebuffer(logo_area, logo_data, fb);
-
-    ESP_LOGI(TAG, "Logo drawn at position %d,%d", logo_x, logo_y);
-
-    // グレースケールのテストパターンを直接書き込む
-    for (int i = 0; i < 16; i++)
-    {
-        int x = 100 + i * 30;
-        int y = 100;
-        int width = 25;
-        int height = 150;
-
-        for (int dy = 0; dy < height; dy++)
-        {
-            for (int dx = 0; dx < width; dx++)
-            {
-                int pos = (y + dy) * DISPLAY_WIDTH + (x + dx);
-                int byte_pos = pos / 2;
-                if (pos % 2 == 0)
-                {
-                    // 偶数ピクセルは下位4ビット
-                    fb[byte_pos] = (fb[byte_pos] & 0xF0) | i;
-                }
-                else
-                {
-                    // 奇数ピクセルは上位4ビット
-                    fb[byte_pos] = (fb[byte_pos] & 0x0F) | (i << 4);
-                }
-            }
-        }
-    }
-
-    // フレームバッファの内容を表示
-    ESP_LOGI(TAG, "Updating display");
-    epd_hl_update_screen(&hl, MODE_GC16, epd_board_m5papers3.get_temperature());
-
-
-    // 処理完了
-    ESP_LOGI(TAG, "Display update complete");
-
-    // 電源OFF
-    epd_poweroff();
-
-    // メモリ解放
-    free(fb);
-}
+ #include <stdio.h>
+ #include <string.h>
+ #include "freertos/FreeRTOS.h"
+ #include "freertos/task.h"
+ #include "esp_system.h"
+ #include "esp_log.h"
+ #include "esp_heap_caps.h"
+ 
+ // epdiy library headers for version 2.0
+ #include "epdiy.h"
+ #include "epd_highlevel.h"
+ 
+ // Custom wrapper library
+ #include "epd_wrapper.h"
+ 
+ // サンプル画像
+ #include "ayamelogo4bit.h"
+ 
+ // For debugging
+ static const char *TAG = "epd_example";
+ 
+ void app_main(void)
+ {
+     ESP_LOGI(TAG, "Starting ED047TC1 E-Paper example with epdiy 2.0 and EPD Wrapper");
+ 
+     // EPD Wrapperの状態変数
+     EPDWrapper epd;
+     memset(&epd, 0, sizeof(EPDWrapper)); // 初期化前に構造体をクリア
+     
+     // EPD Wrapperの初期化
+     ESP_LOGI(TAG, "Initializing EPD Wrapper");
+     if (!epd_wrapper_init(&epd)) {
+         ESP_LOGE(TAG, "Failed to initialize EPD Wrapper");
+         return;
+     }
+     
+     // 初期化後、少し待機
+     vTaskDelay(200 / portTICK_PERIOD_MS);
+     
+     // 電源ON
+     ESP_LOGI(TAG, "Powering on the display");
+     epd_wrapper_power_on(&epd);
+     
+     // 電源ON後、少し待機
+     vTaskDelay(200 / portTICK_PERIOD_MS);
+     
+     // ディスプレイのクリア（2サイクル - 少し減らして安全に）
+     ESP_LOGI(TAG, "Clearing the display");
+     epd_wrapper_clear_cycles(&epd, 2);
+     
+     // 回転設定（0:0度, 1:90度, 2:180度, 3:270度）
+     // 回転を変更すると、描画する座標系が変わります
+     int rotation = 1; // デフォルトの回転（横向き）
+     
+     ESP_LOGI(TAG, "Setting display rotation to %d (%d degrees)", rotation, rotation * 90);
+     epd_wrapper_set_rotation(&epd, rotation);
+     
+     // 回転を考慮したディスプレイサイズを取得
+     int display_width = epd_wrapper_get_width(&epd);
+     int display_height = epd_wrapper_get_height(&epd);
+     
+     ESP_LOGI(TAG, "Display dimensions after rotation: %d x %d", display_width, display_height);
+     
+     // 基本図形の描画
+     ESP_LOGI(TAG, "Drawing test patterns");
+     
+     // 中央に大きな円を描画
+     int center_x = display_width / 2;
+     int center_y = display_height / 2;
+     int radius = 100;
+     epd_wrapper_draw_circle(&epd, center_x, center_y, radius, 0);
+     
+     // 対角線を描画
+     epd_wrapper_draw_line(&epd, 0, 0, display_width, display_height, 0);
+     epd_wrapper_draw_line(&epd, 0, display_height, display_width, 0, 0);
+     
+     // 中央付近に小さな円をいくつか描画
+     epd_wrapper_fill_circle(&epd, center_x - 50, center_y - 50, 20, 0);
+     epd_wrapper_fill_circle(&epd, center_x + 50, center_y - 50, 20, 0);
+     epd_wrapper_fill_circle(&epd, center_x, center_y + 50, 30, 0);
+     
+     // 枠線を描画
+     epd_wrapper_draw_rect(&epd, 10, 10, display_width - 20, display_height - 20, 0);
+     
+     // ロゴを描画
+     ESP_LOGI(TAG, "Drawing Ayame logo");
+     
+     // 右上にロゴを配置
+     int logo_x = display_width - LOGO_WIDTH - 20;
+     int logo_y = 20;
+     
+     // フレームバッファにロゴをコピー
+     epd_wrapper_draw_image(&epd, logo_x, logo_y, LOGO_WIDTH, LOGO_HEIGHT, logo_data);
+     
+     ESP_LOGI(TAG, "Logo drawn at position %d,%d", logo_x, logo_y);
+     
+     // グレースケールのテストパターンを描画
+     epd_wrapper_draw_grayscale_test(&epd, 100, 100, display_width / 2, 150);
+     
+     // フレームバッファの内容を表示
+     ESP_LOGI(TAG, "Updating display");
+     epd_wrapper_update_screen(&epd, MODE_GC16);
+     
+     // ----- 回転テストはいったん除外 ----- //
+     
+     // 5秒待機
+     vTaskDelay(5000 / portTICK_PERIOD_MS);
+     
+     // 90度回転させて再描画
+     rotation = 2; // 90度回転
+     ESP_LOGI(TAG, "Changing rotation to %d (%d degrees)", rotation, rotation * 90);
+     
+     // ディスプレイをクリア
+     epd_wrapper_fill(&epd, 0xFF);
+     
+     // 回転を設定
+     epd_wrapper_set_rotation(&epd, rotation);
+     
+     // 回転を考慮したディスプレイサイズを再取得
+     display_width = epd_wrapper_get_width(&epd);
+     display_height = epd_wrapper_get_height(&epd);
+     
+     ESP_LOGI(TAG, "Display dimensions after rotation: %d x %d", display_width, display_height);
+     
+     // 再度描画テスト
+     center_x = display_width / 2;
+     center_y = display_height / 2;
+     
+     // 中央に大きな円と枠線を描画
+     epd_wrapper_draw_circle(&epd, center_x, center_y, radius, 0);
+     epd_wrapper_draw_rect(&epd, 10, 10, display_width - 20, display_height - 20, 0);
+     
+     // 回転テスト用のテキスト描画位置を示す矩形（実際のテキストは描画しません）
+     epd_wrapper_fill_rect(&epd, 30, 30, 200, 50, 0);
+     
+     // ロゴを左上に描画
+     epd_wrapper_draw_image(&epd, 20, 20, LOGO_WIDTH, LOGO_HEIGHT, logo_data);
+     
+     // 更新
+     epd_wrapper_update_screen(&epd, MODE_GC16);
+     
+     
+     // 処理完了
+     ESP_LOGI(TAG, "Display update complete");
+     
+     // 更新後しばらく待機
+     vTaskDelay(1000 / portTICK_PERIOD_MS);
+     
+     // 電源OFF
+     ESP_LOGI(TAG, "Powering off the display");
+     epd_wrapper_power_off(&epd);
+     
+     // 電源OFFが完了するまで待機
+     vTaskDelay(200 / portTICK_PERIOD_MS);
+     
+     // EPD Wrapperの終了処理
+     ESP_LOGI(TAG, "Deinitializing EPD Wrapper");
+     epd_wrapper_deinit(&epd);
+     
+     ESP_LOGI(TAG, "Example completed successfully");
+ }
