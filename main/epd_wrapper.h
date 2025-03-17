@@ -142,7 +142,30 @@
   * @param image_data イメージデータ
   */
  void epd_wrapper_draw_image(EPDWrapper *wrapper, int x, int y, int width, int height, const uint8_t *image_data);
- 
+
+ /**
+ * @brief 画像データを回転させて描画する関数
+ * @param wrapper EPDラッパー構造体へのポインタ
+ * @param x 左上X座標
+ * @param y 左上Y座標
+ * @param width 画像の幅
+ * @param height 画像の高さ
+ * @param image_data 画像データ
+ * @param rotate_image 画像自体を回転させるかどうか（true:画像を回転, false:座標のみ回転）
+ */
+void epd_wrapper_draw_rotated_image(EPDWrapper *wrapper, int x, int y, int width, int height, const uint8_t *image_data, bool rotate_image);
+
+/**
+ * @brief 画像データを特定の角度で回転させる関数
+ * @param src_data 元の画像データ
+ * @param src_width 元の画像の幅
+ * @param src_height 元の画像の高さ
+ * @param rotation 回転角度（0:0度, 1:90度, 2:180度, 3:270度）
+ * @param dst_data 回転後の画像データを格納するバッファ（事前に確保必要）
+ * @return 成功時は0、失敗時は負の値
+ */
+int rotate_image_data(const uint8_t *src_data, int src_width, int src_height, int rotation, uint8_t *dst_data);
+
  /**
   * @brief グレースケールテストパターンを描画する
   * @param wrapper EPDラッパー構造体へのポインタ
