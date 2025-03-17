@@ -56,7 +56,7 @@ void app_main(void)
 
     // 回転設定（0:0度, 1:90度, 2:180度, 3:270度）
     // 回転を変更すると、描画する座標系が変わります
-    int rotation = 2; // デフォルトの回転（横向き）
+    int rotation = 0; // デフォルトの回転（横向き）
 
     ESP_LOGI(TAG, "Setting display rotation to %d (%d degrees)", rotation, rotation * 90);
     epd_wrapper_set_rotation(&epd, rotation);
@@ -96,12 +96,15 @@ void app_main(void)
     ESP_LOGI(TAG, "Drawing Ayame logo");
 
     // 右上にロゴを配置
-    int logo_x = 20;
-    int logo_y = 20;
+    int logo_x = 0;
+    int logo_y = 0;
 
     // フレームバッファにロゴをコピー
     //     epd_wrapper_draw_image(&epd, logo_x, logo_y, LOGO_WIDTH, LOGO_HEIGHT, logo_data);
-    epd_wrapper_draw_rotated_image(&epd, logo_x, logo_y, LOGO_WIDTH, LOGO_HEIGHT, logo_data, true);
+    //epd_wrapper_draw_rotated_image(&epd, logo_x, logo_y, LOGO_WIDTH, LOGO_HEIGHT, logo_data, true);
+    uint8_t transparent_color = 0x0F;
+    epd_wrapper_draw_rotated_image_with_transparency(&epd, logo_x, logo_y, LOGO_WIDTH, LOGO_HEIGHT, logo_data, true, true, transparent_color);
+
     ESP_LOGI(TAG, "Logo drawn at position %d,%d", logo_x, logo_y);
 
     // グレースケールのテストパターンを描画
@@ -117,7 +120,7 @@ void app_main(void)
     vTaskDelay(5000 / portTICK_PERIOD_MS);
 
     // 90度回転させて再描画
-    rotation = 1; // 90度回転
+    rotation = 3; // 90度回転
     ESP_LOGI(TAG, "Changing rotation to %d (%d degrees)", rotation, rotation * 90);
 
     // ディスプレイをクリア
@@ -147,6 +150,10 @@ void app_main(void)
     // ロゴを左上に描画
     // epd_wrapper_draw_image(&epd, 20, 20, LOGO_WIDTH, LOGO_HEIGHT, logo_data);
     epd_wrapper_draw_rotated_image(&epd, 20, 20, LOGO_WIDTH, LOGO_HEIGHT, logo_data, true);
+    logo_x = center_x - (LOGO_WIDTH / 2);
+    logo_y = center_y - (LOGO_HEIGHT / 2);
+    epd_wrapper_draw_rotated_image_with_transparency(&epd, logo_x, logo_y, LOGO_WIDTH, LOGO_HEIGHT, logo_data, true, true, transparent_color);
+
     // 更新
     epd_wrapper_update_screen(&epd, MODE_GC16);
 

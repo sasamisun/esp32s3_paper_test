@@ -465,7 +465,7 @@ int rotate_image_data(const uint8_t *src_data, int src_width, int src_height, in
 }
 
 /**
- * @brief 画像データを回転させて描画する関数
+ * @brief 画像データを回転させて描画する関数（透明色対応版）
  * @param wrapper EPDラッパー構造体へのポインタ
  * @param x 左上X座標
  * @param y 左上Y座標
@@ -473,11 +473,16 @@ int rotate_image_data(const uint8_t *src_data, int src_width, int src_height, in
  * @param height 画像の高さ
  * @param image_data 画像データ
  * @param rotate_image 画像自体を回転させるかどうか（true:画像を回転, false:座標のみ回転）
+ * @param use_transparency 透明処理を有効にするかどうか
+ * @param transparent_color 透明とする色（0-15の値）
  */
-void epd_wrapper_draw_rotated_image(EPDWrapper *wrapper, int x, int y,
-                                    int width, int height,
-                                    const uint8_t *image_data,
-                                    bool rotate_image)
+void epd_wrapper_draw_rotated_image_with_transparency(EPDWrapper *wrapper,
+                                                      int x, int y,
+                                                      int width, int height,
+                                                      const uint8_t *image_data,
+                                                      bool rotate_image,
+                                                      bool use_transparency,
+                                                      uint8_t transparent_color)
 {
     if (wrapper == NULL || !wrapper->is_initialized ||
         wrapper->framebuffer == NULL || image_data == NULL)
@@ -486,20 +491,67 @@ void epd_wrapper_draw_rotated_image(EPDWrapper *wrapper, int x, int y,
         return;
     }
 
+    // 透明色を4ビット値（0-15）に制限
+    transparent_color &= 0x0F;
+
+    // 透明色を8ビット値に変換（epdiyの関数で使用するため）
+    // uint8_t transparent_color_8bit = transparent_color << 4;
+
     // 現在の回転を取得
     int rotation = wrapper->rotation;
 
-    // 回転が設定されていなければ、標準の描画関数を使用
+    // 回転が設定されていなければ、標準の描画関数を使用（透明処理対応）
     if (rotation == 0 || !rotate_image)
     {
+        // 透明処理を使用しない場合は通常のコピー
+        if (!use_transparency)
+        {
+            EpdRect image_area = {
+                .x = x,
+                .y = y,
+                .width = width,
+                .height = height};
+            epd_copy_to_framebuffer(image_area, image_data, wrapper->framebuffer);
+            return;
+        }
 
-        EpdRect image_area = {
-            .x = x,
-            .y = y,
-            .width = width, // 画像自体は回転しないので、元のサイズを使用
-            .height = height};
+        // 画像の1行あたりのバイト数を計算（奇数幅の場合は切り上げ）
+        int img_width_bytes = (width + 1) / 2;
 
-        epd_copy_to_framebuffer(image_area, image_data, wrapper->framebuffer);
+        // 透明処理を使用する場合はピクセルごとに判断
+        for (int img_y = 0; img_y < height; img_y++)
+        {
+            for (int img_x = 0; img_x < width; img_x++)
+            {
+                // 画像のピクセル位置を計算
+                int img_row_offset = img_y * img_width_bytes;
+                int img_byte_pos = img_row_offset + (img_x / 2);
+                uint8_t img_pixel;
+
+                // 4ビット/ピクセルのデータを取得
+                if (img_x % 2 == 0)
+                {
+                    // 偶数ピクセルは下位4ビット
+                    img_pixel = image_data[img_byte_pos] & 0x0F;
+                }
+                else
+                {
+                    // 奇数ピクセルは上位4ビット
+                    img_pixel = (image_data[img_byte_pos] & 0xF0) >> 4;
+                }
+
+                // 透明色でない場合のみ描画
+                if (img_pixel != transparent_color)
+                {
+                    int dx = x + img_x;
+                    int dy = y + img_y;
+
+                    // EPDIYの描画関数を使用することでrotationを正しく処理
+                    uint8_t color_8bit = img_pixel << 4 | img_pixel; // 4ビット値を8ビットに拡張
+                    epd_draw_pixel(dx, dy, color_8bit, wrapper->framebuffer);
+                }
+            }
+        }
         return;
     }
 
@@ -562,17 +614,119 @@ void epd_wrapper_draw_rotated_image(EPDWrapper *wrapper, int x, int y,
         break;
     }
 
-    // 回転済み画像を描画
-    EpdRect image_area = {
-        .x = adjusted_x,
-        .y = adjusted_y,
-        .width = rotated_width,
-        .height = rotated_height};
+    // 透明処理を使用しない場合は通常のコピー
+    if (!use_transparency)
+    {
+        // 回転済み画像を描画
+        EpdRect image_area = {
+            .x = adjusted_x,
+            .y = adjusted_y,
+            .width = rotated_width,
+            .height = rotated_height};
 
-    epd_copy_to_framebuffer(image_area, rotated_data, wrapper->framebuffer);
+        epd_copy_to_framebuffer(image_area, rotated_data, wrapper->framebuffer);
+    }
+    else
+    {
+        // 回転後の1行あたりのバイト数を計算（奇数幅の場合は切り上げ）
+        int rotated_width_bytes = (rotated_width + 1) / 2;
+
+        // 透明処理を使用する場合はピクセルごとに判断
+        if (use_transparency)
+        {
+            for (int img_y = 0; img_y < rotated_height; img_y++)
+            {
+                for (int img_x = 0; img_x < rotated_width; img_x++)
+                {
+                    // 画像のピクセル位置を計算
+                    int img_row_offset = img_y * rotated_width_bytes;
+                    int img_byte_pos = img_row_offset + (img_x / 2);
+                    uint8_t img_pixel;
+
+                    // 4ビット/ピクセルのデータを取得
+                    if (img_x % 2 == 0)
+                    {
+                        // 偶数ピクセルは下位4ビット
+                        img_pixel = rotated_data[img_byte_pos] & 0x0F;
+                    }
+                    else
+                    {
+                        // 奇数ピクセルは上位4ビット
+                        img_pixel = (rotated_data[img_byte_pos] & 0xF0) >> 4;
+                    }
+
+                    // 透明色でない場合のみ描画
+                    if (img_pixel != transparent_color)
+                    {
+                        int dx = adjusted_x + img_x;
+                        int dy = adjusted_y + img_y;
+
+                        // EPDIYの描画関数を使用
+                        uint8_t color_8bit = img_pixel << 4 | img_pixel; // 4ビット値を8ビットに拡張
+                        epd_draw_pixel(dx, dy, color_8bit, wrapper->framebuffer);
+                    }
+                }
+            }
+        }
+        else
+        {
+            // 透明処理なしの場合は通常のコピー
+            EpdRect image_area = {
+                .x = adjusted_x,
+                .y = adjusted_y,
+                .width = rotated_width,
+                .height = rotated_height};
+
+            epd_copy_to_framebuffer(image_area, rotated_data, wrapper->framebuffer);
+        }
+    }
 
     // 一時バッファを解放
     heap_caps_free(rotated_data);
+}
+
+/**
+ * @brief 元の関数をオーバーロードして、新しい透明処理機能対応版を提供
+ * @param wrapper EPDラッパー構造体へのポインタ
+ * @param x 左上X座標
+ * @param y 左上Y座標
+ * @param width 画像の幅
+ * @param height 画像の高さ
+ * @param image_data 画像データ
+ * @param rotate_image 画像自体を回転させるかどうか（true:画像を回転, false:座標のみ回転）
+ */
+void epd_wrapper_draw_rotated_image(EPDWrapper *wrapper, int x, int y,
+                                    int width, int height,
+                                    const uint8_t *image_data,
+                                    bool rotate_image)
+{
+    // 透明処理なしで新しい関数を呼び出す
+    epd_wrapper_draw_rotated_image_with_transparency(wrapper, x, y, width, height,
+                                                     image_data, rotate_image,
+                                                     false, 0);
+}
+
+/**
+ * @brief 透明色を指定して画像を描画する（後方互換性のためのヘルパー関数）
+ * @param wrapper EPDラッパー構造体へのポインタ
+ * @param x 左上X座標
+ * @param y 左上Y座標
+ * @param width 画像の幅
+ * @param height 画像の高さ
+ * @param image_data 画像データ
+ * @param rotate_image 画像自体を回転させるかどうか（true:画像を回転, false:座標のみ回転）
+ * @param transparent_color 透明とする色（0-15の値）
+ */
+void epd_wrapper_draw_transparent_image(EPDWrapper *wrapper, int x, int y,
+                                        int width, int height,
+                                        const uint8_t *image_data,
+                                        bool rotate_image,
+                                        uint8_t transparent_color)
+{
+    // 透明処理ありで新しい関数を呼び出す
+    epd_wrapper_draw_rotated_image_with_transparency(wrapper, x, y, width, height,
+                                                     image_data, rotate_image,
+                                                     true, transparent_color);
 }
 
 void epd_wrapper_draw_grayscale_test(EPDWrapper *wrapper, int x, int y, int width, int height)
