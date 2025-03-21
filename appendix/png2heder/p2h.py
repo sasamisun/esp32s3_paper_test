@@ -4,6 +4,7 @@ PNG to EPD 4-bit Grayscale Converter
 
 このスクリプトはPNG画像を電子ペーパーディスプレイ用の4ビットグレースケールに変換します。
 明るさ調整、コントラスト調整、反転などのオプションが利用可能です。
+画像の自動トリミング機能も追加されています。
 """
 
 from PIL import Image, ImageEnhance
@@ -13,7 +14,11 @@ import argparse
 
 def convert_png_to_4bit_grayscale(input_file, output_file, brightness=1.0, contrast=1.0, 
                                   invert=False, black_threshold=None, white_threshold=None, 
-                                  gamma=1.0, transparent_white=True):
+                                  gamma=1.0, transparent_white=True, trim_width=540, trim_height=960):
+    if trim_width is None:
+        trim_width=540
+    if trim_height is None:
+        trim_height=960
     """
     PNG画像を電子ペーパーディスプレイ用の4ビットグレースケールに変換します
     
@@ -27,6 +32,8 @@ def convert_png_to_4bit_grayscale(input_file, output_file, brightness=1.0, contr
     - white_threshold: この値以上は白として扱う (0-255)
     - gamma: ガンマ補正値 (1.0がデフォルト)
     - transparent_white: 透明部分を白として扱うかどうか
+    - trim_width: トリミング後の幅 (None=トリミングなし)
+    - trim_height: トリミング後の高さ (None=トリミングなし)
     """
     # 画像を開く
     try:
@@ -34,6 +41,23 @@ def convert_png_to_4bit_grayscale(input_file, output_file, brightness=1.0, contr
     except Exception as e:
         print(f"エラー: 画像を開けませんでした - {e}")
         return False
+    
+    # 元の画像サイズを取得
+    original_width, original_height = img.size
+    print(f"Original image dimensions: {original_width} x {original_height}")
+    
+    # トリミング処理
+    # トリミングサイズが元のサイズより大きい場合は元のサイズに制限
+    trim_width = min(trim_width, original_width)
+    trim_height = min(trim_height, original_height)
+    
+    # 元のサイズと違う場合だけトリミング処理を実行
+    if trim_width != original_width or trim_height != original_height:
+        # 左上を基準に右端と下側をトリミング
+        img = img.crop((0, 0, trim_width, trim_height))
+        print(f"Image trimmed to: {trim_width} x {trim_height}")
+    else:
+        print(f"No trimming needed, using original dimensions: {original_width} x {original_height}")
     
     # RGBAモードに変換（透明度情報を確保）
     if img.mode != 'RGBA':
@@ -50,8 +74,7 @@ def convert_png_to_4bit_grayscale(input_file, output_file, brightness=1.0, contr
         img = enhancer.enhance(contrast)
     
     width, height = img.size
-    
-    print(f"Image dimensions: {width} x {height}")
+    print(f"Final image dimensions: {width} x {height}")
     
     # 4ビットグレースケールに変換（16階調）
     bytes_data = []
@@ -128,7 +151,8 @@ def convert_png_to_4bit_grayscale(input_file, output_file, brightness=1.0, contr
         with open(output_file, 'w') as f:
             # ヘッダコメント
             f.write(f"// 4-bit grayscale image data converted from {os.path.basename(input_file)}\n")
-            f.write(f"// Dimensions: {width} x {height}\n")
+            f.write(f"// Original dimensions: {original_width} x {original_height}\n")
+            f.write(f"// Trimmed dimensions: {width} x {height}\n")
             f.write(f"// Conversion options:\n")
             f.write(f"//  - Brightness: {brightness}\n")
             f.write(f"//  - Contrast: {contrast}\n")
@@ -179,6 +203,9 @@ if __name__ == "__main__":
     parser.add_argument('--white-threshold', type=int, help='この値以上は白として扱う (0-255)')
     parser.add_argument('-g', '--gamma', type=float, default=1.0, help='ガンマ補正値 (1.0がデフォルト)')
     parser.add_argument('-t', '--transparent-black', action='store_true', help='透明部分を黒として扱う (デフォルトは白)')
+    # トリミング機能のオプションを追加
+    parser.add_argument('--trim-width', type=int, help='トリミング後の幅 (指定しない場合は元のサイズ)')
+    parser.add_argument('--trim-height', type=int, help='トリミング後の高さ (指定しない場合は元のサイズ)')
     
     args = parser.parse_args()
     
@@ -203,6 +230,15 @@ if __name__ == "__main__":
         print("エラー: ガンマ値は正の値で指定してください")
         sys.exit(1)
     
+    # トリミングサイズのバリデーション
+    if args.trim_width is not None and args.trim_width <= 0:
+        print("エラー: トリミング幅は正の値で指定してください")
+        sys.exit(1)
+        
+    if args.trim_height is not None and args.trim_height <= 0:
+        print("エラー: トリミング高さは正の値で指定してください")
+        sys.exit(1)
+    
     # 変換実行
     success = convert_png_to_4bit_grayscale(
         args.input, 
@@ -213,7 +249,9 @@ if __name__ == "__main__":
         black_threshold=args.black_threshold,
         white_threshold=args.white_threshold,
         gamma=args.gamma,
-        transparent_white=not args.transparent_black
+        transparent_white=not args.transparent_black,
+        trim_width=args.trim_width,
+        trim_height=args.trim_height
     )
     
     if not success:
