@@ -5,6 +5,7 @@ idf_component_register(
         "epd_board_m5papers3.c"
         "epd_wrapper.c"
         "epd_transition.c"
+        "epd_text.c"
     PRIV_REQUIRES 
         "epdiy" 
         "driver" 

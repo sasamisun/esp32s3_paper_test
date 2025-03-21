@@ -25,6 +25,12 @@
 #include "bg2.h"
 #include "ichi.h"
 
+// epd_main.c のインクルード部分に追加
+#include "epd_text.h"
+#include "Mplus2-Light_16.h"  // 生成したフォントヘッダファイル（実際のファイル名に合わせて変更）
+
+// 既存の app_main 関数に追加するテキスト表示のテスト関数
+void test_text_display(EPDWrapper* wrapper);
 // For debugging
 static const char *TAG = "epd_example";
 
@@ -71,7 +77,8 @@ void app_main(void)
     vTaskDelay(500 / portTICK_PERIOD_MS);
     transition(&epd, bg2_data, TRANSITION_SLIDE_UP);
 
-
+    //テキスト表示テスト
+    test_text_display(&epd);
     // 更新後しばらく待機
     vTaskDelay(1000 / portTICK_PERIOD_MS);
 
@@ -255,4 +262,76 @@ void transition(EPDWrapper *epd, const uint8_t *image_data, TransitionType type)
     // 6. トランジションリソースの解放
     ESP_LOGI(TAG, "Transition completed, releasing resources");
     epd_transition_deinit(epd, &transition);
+}
+
+
+// 既存の app_main 関数に追加するテキスト表示のテスト関数
+void test_text_display(EPDWrapper* wrapper) {
+    ESP_LOGI(TAG, "Starting text display test");
+    
+    // 画面を白色でクリア
+    epd_wrapper_fill(wrapper, 0xFF);
+    
+    // テキスト設定を初期化
+    EPDTextConfig text_config;
+    epd_text_config_init(&text_config, &Mplus2_Light_16); // フォント指定
+    
+    // テキスト色を黒に設定
+    text_config.text_color = 0;
+    
+    // 横書きテキスト - 画面上部
+    int y_pos = 50;
+    epd_text_draw_string(wrapper, 50, y_pos, "こんにちは世界！", &text_config);
+    y_pos += 30;
+    
+    // 太字設定
+    text_config.bold = true;
+    epd_text_draw_string(wrapper, 50, y_pos, "これは太字テスト", &text_config);
+    y_pos += 30;
+    text_config.bold = false;
+    
+    // 中央揃え
+    text_config.alignment = EPD_TEXT_ALIGN_CENTER;
+    epd_text_draw_string(wrapper, wrapper->rotation == 0 ? 480 : 270, y_pos, "中央揃えテキスト", &text_config);
+    y_pos += 30;
+    
+    // 右揃え
+    text_config.alignment = EPD_TEXT_ALIGN_RIGHT;
+    epd_text_draw_string(wrapper, 850, y_pos, "右揃えテキスト", &text_config);
+    y_pos += 30;
+    
+    // 左揃えに戻す
+    text_config.alignment = EPD_TEXT_ALIGN_LEFT;
+    
+    // 下線付きテキスト
+    text_config.underline = true;
+    epd_text_draw_string(wrapper, 50, y_pos, "下線付きテキスト", &text_config);
+    y_pos += 30;
+    text_config.underline = false;
+    
+    // 複数行テキスト
+    text_config.wrap_width = 400;
+    epd_text_draw_multiline(wrapper, 50, y_pos, 
+                           "これは複数行に折り返されるテキストです。"
+                           "テキストが指定した幅を超えると自動的に次の行に折り返されます。"
+                           "日本語の文章も問題なく表示できます。", &text_config);
+    y_pos += 100;
+    
+    // 縦書きテキスト
+    text_config.vertical = true;
+    text_config.wrap_width = 0; // 折り返しなし
+    int x_pos = 50;
+    epd_text_draw_string(wrapper, x_pos, y_pos, "縦書きテキスト", &text_config);
+    x_pos += 30;
+    
+    // 縦書き複数行
+    text_config.wrap_width = 200;
+    epd_text_draw_multiline(wrapper, x_pos, y_pos, 
+                           "縦書きで複数行のテキストを表示することもできます。"
+                           "日本語の縦書きは伝統的な表示方法です。", &text_config);
+                           
+    // 画面を更新して表示
+    epd_wrapper_update_screen(wrapper, MODE_GC16);
+    
+    ESP_LOGI(TAG, "Text display test completed");
 }
