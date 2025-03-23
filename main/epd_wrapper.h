@@ -248,4 +248,13 @@ int epd_wrapper_get_width(EPDWrapper *wrapper);
  */
 int epd_wrapper_get_height(EPDWrapper *wrapper);
 
+/**
+ * @brief 1ピクセルを描画する
+ * @param wrapper EPDラッパー構造体へのポインタ
+ * @param x X座標
+ * @param y Y座標
+ * @param color 色（0-15のグレースケール）
+ */
+void epd_wrapper_draw_pixel(EPDWrapper *wrapper, int x, int y, uint8_t color);
+
 #endif // EPD_WRAPPER_H

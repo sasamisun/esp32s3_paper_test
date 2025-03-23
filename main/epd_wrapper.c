@@ -850,3 +850,30 @@ int epd_wrapper_get_height(EPDWrapper *wrapper)
         return EPD_DISPLAY_HEIGHT;
     }
 }
+
+/**
+ * @brief 1ピクセルを描画する
+ * @param wrapper EPDラッパー構造体へのポインタ
+ * @param x X座標
+ * @param y Y座標
+ * @param color 色（0-15のグレースケール）
+ */
+void epd_wrapper_draw_pixel(EPDWrapper *wrapper, int x, int y, uint8_t color) {
+    if (wrapper == NULL || !wrapper->is_initialized || wrapper->framebuffer == NULL) {
+        ESP_LOGE(TAG, "EPD wrapper not properly initialized");
+        return;
+    }
+
+    // 正確なピクセル位置を計算
+    int pos = y * EPD_DISPLAY_WIDTH + x;
+    int byte_pos = pos / 2;
+    
+    // 4ビット/ピクセルのバッファでは、1バイトに2つのピクセルが格納される
+    if (pos % 2 == 0) {
+        // 偶数ピクセル（下位4ビット）
+        wrapper->framebuffer[byte_pos] = (wrapper->framebuffer[byte_pos] & 0xF0) | (color & 0x0F);
+    } else {
+        // 奇数ピクセル（上位4ビット）
+        wrapper->framebuffer[byte_pos] = (wrapper->framebuffer[byte_pos] & 0x0F) | ((color & 0x0F) << 4);
+    }
+}

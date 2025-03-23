@@ -21,9 +21,9 @@
 
 // サンプル画像
 #include "ayamelogo4bit.h"
-#include "bg1.h"
+//#include "bg1.h"
 #include "bg2.h"
-#include "ichi.h"
+//#include "ichi.h"
 
 // epd_main.c のインクルード部分に追加
 #include "epd_text.h"
@@ -70,11 +70,11 @@ void app_main(void)
     //epd_wrapper_draw_rotated_image(&epd, 0, 0, BG1_WIDTH, BG1_HEIGHT, bg2_data, true);
     //epd_wrapper_update_screen(&epd, MODE_GC16);
 
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-    transition(&epd, ich_data, TRANSITION_WIPE);
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-    transition(&epd, bg1_data, TRANSITION_SLIDE_LEFT);
-    vTaskDelay(500 / portTICK_PERIOD_MS);
+    //vTaskDelay(500 / portTICK_PERIOD_MS);
+    //transition(&epd, ich_data, TRANSITION_WIPE);
+    //vTaskDelay(500 / portTICK_PERIOD_MS);
+    //transition(&epd, bg1_data, TRANSITION_SLIDE_LEFT);
+    //vTaskDelay(500 / portTICK_PERIOD_MS);
     transition(&epd, bg2_data, TRANSITION_SLIDE_UP);
 
     //テキスト表示テスト
