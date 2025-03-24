@@ -14,10 +14,6 @@
  #include <stdbool.h>
  #include "epd_wrapper.h"
  
- #ifdef __cplusplus
- extern "C" {
- #endif
- 
  /**
   * @brief フォント文字情報
   */
@@ -170,9 +166,5 @@
   * @return CJK文字ならtrue、それ以外ならfalse
   */
  bool epd_text_is_cjk(uint32_t code_point);
- 
- #ifdef __cplusplus
- }
- #endif
  
  #endif // EPD_TEXT_H

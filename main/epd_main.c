@@ -27,16 +27,15 @@
 
 // epd_main.c のインクルード部分に追加
 #include "epd_text.h"
-#include "Mplus2-Light_16.h"  // 生成したフォントヘッダファイル（実際のファイル名に合わせて変更）
+#include "Mplus2-Light_16.h"
 
-// 既存の app_main 関数に追加するテキスト表示のテスト関数
-void test_text_display(EPDWrapper* wrapper);
 // For debugging
 static const char *TAG = "epd_example";
 
 
 void draw_sprash(EPDWrapper *wrapper);
 void transition(EPDWrapper *epd, const uint8_t *newimage, TransitionType type);
+void test_text_display(EPDWrapper* wrapper);
 
 void app_main(void)
 {
@@ -266,72 +265,42 @@ void transition(EPDWrapper *epd, const uint8_t *image_data, TransitionType type)
 
 
 // 既存の app_main 関数に追加するテキスト表示のテスト関数
-void test_text_display(EPDWrapper* wrapper) {
+void test_text_display(EPDWrapper *epd) {
     ESP_LOGI(TAG, "Starting text display test");
-    
-    // 画面を白色でクリア
-    epd_wrapper_fill(wrapper, 0xFF);
-    
-    // テキスト設定を初期化
+    // テキスト設定の初期化
+    ESP_LOGI(TAG, "Initializing text configuration");
     EPDTextConfig text_config;
-    epd_text_config_init(&text_config, &Mplus2_Light_16); // フォント指定
+    epd_text_config_init(&text_config, &Mplus2_Light_16);
     
-    // テキスト色を黒に設定
-    text_config.text_color = 0;
+    ESP_LOGI(TAG, "Text configuration initialized successfully");
+    ESP_LOGI(TAG, "Font size: %d, Max height: %d", 
+             text_config.font->size, 
+             text_config.font->max_height);
+    ESP_LOGI(TAG, "Total chars in font: %d", text_config.font->chars_count);
     
-    // 横書きテキスト - 画面上部
-    int y_pos = 50;
-    epd_text_draw_string(wrapper, 50, y_pos, "こんにちは世界！", &text_config);
-    y_pos += 30;
+    // フォントの文字を調べるテスト（「あ」のコードポイント: U+3042）
+    const FontCharInfo* char_info = epd_text_find_char(text_config.font, 0x3042);
+    if (char_info != NULL) {
+        ESP_LOGI(TAG, "Found character 'あ' (U+3042) in font:");
+        ESP_LOGI(TAG, "  Width: %d, Image Width: %d, Image Height: %d", 
+                 char_info->width, char_info->img_width, char_info->img_height);
+        ESP_LOGI(TAG, "  Data offset: %lu", char_info->data_offset);
+    } else {
+        ESP_LOGW(TAG, "Character 'あ' (U+3042) not found in font");
+    }
     
-    // 太字設定
-    text_config.bold = true;
-    epd_text_draw_string(wrapper, 50, y_pos, "これは太字テスト", &text_config);
-    y_pos += 30;
-    text_config.bold = false;
+    // UTF-8パーサーのテスト
+    const char* test_text = "こんにちは世界！";
+    const char* ptr = test_text;
+    uint32_t code_point;
+    ESP_LOGI(TAG, "UTF-8 parser test for: %s", test_text);
     
-    // 中央揃え
-    text_config.alignment = EPD_TEXT_ALIGN_CENTER;
-    epd_text_draw_string(wrapper, wrapper->rotation == 0 ? 480 : 270, y_pos, "中央揃えテキスト", &text_config);
-    y_pos += 30;
+    while ((code_point = epd_text_utf8_next_char(&ptr)) != 0) {
+        char_info = epd_text_find_char(text_config.font, code_point);
+        ESP_LOGI(TAG, "  Code point: U+%08lx, CJK: %s, Found in font: %s", 
+                 code_point, 
+                 epd_text_is_cjk(code_point) ? "Yes" : "No",
+                 char_info ? "Yes" : "No");
+    }
     
-    // 右揃え
-    text_config.alignment = EPD_TEXT_ALIGN_RIGHT;
-    epd_text_draw_string(wrapper, 850, y_pos, "右揃えテキスト", &text_config);
-    y_pos += 30;
-    
-    // 左揃えに戻す
-    text_config.alignment = EPD_TEXT_ALIGN_LEFT;
-    
-    // 下線付きテキスト
-    text_config.underline = true;
-    epd_text_draw_string(wrapper, 50, y_pos, "下線付きテキスト", &text_config);
-    y_pos += 30;
-    text_config.underline = false;
-    
-    // 複数行テキスト
-    text_config.wrap_width = 400;
-    epd_text_draw_multiline(wrapper, 50, y_pos, 
-                           "これは複数行に折り返されるテキストです。"
-                           "テキストが指定した幅を超えると自動的に次の行に折り返されます。"
-                           "日本語の文章も問題なく表示できます。", &text_config);
-    y_pos += 100;
-    
-    // 縦書きテキスト
-    text_config.vertical = true;
-    text_config.wrap_width = 0; // 折り返しなし
-    int x_pos = 50;
-    epd_text_draw_string(wrapper, x_pos, y_pos, "縦書きテキスト", &text_config);
-    x_pos += 30;
-    
-    // 縦書き複数行
-    text_config.wrap_width = 200;
-    epd_text_draw_multiline(wrapper, x_pos, y_pos, 
-                           "縦書きで複数行のテキストを表示することもできます。"
-                           "日本語の縦書きは伝統的な表示方法です。", &text_config);
-                           
-    // 画面を更新して表示
-    epd_wrapper_update_screen(wrapper, MODE_GC16);
-    
-    ESP_LOGI(TAG, "Text display test completed");
 }
