@@ -192,11 +192,208 @@
      return false;
  }
  
- // 以下の関数はスタブとして実装（後で実装する）
- int epd_text_draw_char(EPDWrapper* wrapper, int x, int y, uint32_t code_point, const EPDTextConfig* config) {
-     ESP_LOGW(TAG, "epd_text_draw_char not fully implemented yet");
-     return 0;
- }
+/**
+ * @brief 単一の文字を描画する
+ * @param wrapper EPDラッパー構造体へのポインタ
+ * @param x X座標
+ * @param y Y座標
+ * @param code_point 描画する文字のUnicodeコードポイント
+ * @param config テキスト描画設定
+ * @return 描画した文字の幅
+ */
+int epd_text_draw_char(EPDWrapper* wrapper, int x, int y, uint32_t code_point, const EPDTextConfig* config) {
+    if (wrapper == NULL || config == NULL || config->font == NULL) {
+        ESP_LOGE(TAG, "Invalid parameters for drawing character");
+        return 0;
+    }
+
+    // フォントから文字情報を検索
+    const FontCharInfo* char_info = epd_text_find_char(config->font, code_point);
+    if (char_info == NULL) {
+        ESP_LOGW(TAG, "Character U+%04lX not found in font", code_point);
+        return 0;
+    }
+
+    // ビットマップデータのポインタを取得
+    const uint8_t* bitmap = config->font->bitmap_data + char_info->data_offset;
+    
+    // 描画位置の調整
+    int draw_x = x;
+    int draw_y = y;
+    
+    // 縦書きモードの場合、座標を調整
+    bool rotate_this_char = false;
+    if (config->vertical) {
+        // CJK文字でない場合、文字を回転させる
+        if (!epd_text_is_cjk(code_point) && config->rotate_non_cjk) {
+            rotate_this_char = true;
+        } else {
+            // 縦書きでCJK文字または回転しない設定の場合、Y座標を中央揃えする
+            draw_y = y - (char_info->width / 2);
+        }
+    }
+
+    // 文字の幅と高さを取得
+    int char_width = char_info->img_width;
+    int char_height = char_info->img_height;
+    
+    ESP_LOGI(TAG, "Drawing character U+%04lX at (%d,%d), size: %dx%d, data_offset: %lu", 
+            code_point, draw_x, draw_y, char_width, char_height, char_info->data_offset);
+
+    // 太字表示の場合のオフセット
+    int bold_offset = config->bold ? 1 : 0;
+    
+    // 背景を描画（透明でない場合）
+    if (!config->bg_transparent) {
+        // 背景の描画領域
+        int bg_x = draw_x;
+        int bg_y = draw_y;
+        int bg_width = char_width;
+        int bg_height = char_height;
+        
+        // 縦書きで回転する文字の場合
+        if (config->vertical && rotate_this_char) {
+            // 回転した場合の領域を考慮（単純化のため縦横入れ替え）
+            bg_width = char_height;
+            bg_height = char_width;
+        }
+        
+        // 背景を塗りつぶす
+        epd_wrapper_fill_rect(wrapper, bg_x, bg_y, bg_width, bg_height, config->bg_color);
+    }
+
+    // ビットマップデータの描画
+    if (rotate_this_char) {
+        // 非CJK文字を90度回転して描画（縦書きモード）
+        // 回転用の一時バッファを確保
+        int rotated_size = ((char_height + 1) / 2) * char_width; // 4bit/pixelのバイト数計算
+        uint8_t* rotated_data = heap_caps_malloc(rotated_size, MALLOC_CAP_8BIT);
+        if (rotated_data == NULL) {
+            ESP_LOGE(TAG, "Failed to allocate memory for rotated character");
+            return char_info->width;
+        }
+        
+        // バッファを0で初期化
+        memset(rotated_data, 0, rotated_size);
+        
+        // 90度回転（時計回り）- 簡易版
+        for (int src_y = 0; src_y < char_height; src_y++) {
+            for (int src_x = 0; src_x < char_width; src_x++) {
+                // 元のピクセル位置と値を計算
+                int src_pos = src_y * ((char_width + 1) / 2) + (src_x / 2);
+                uint8_t src_pixel;
+                
+                if (src_x % 2 == 0) {
+                    src_pixel = (bitmap[src_pos] & 0x0F);
+                } else {
+                    src_pixel = (bitmap[src_pos] & 0xF0) >> 4;
+                }
+                
+                // 新しい位置（90度回転）
+                int new_x = char_height - 1 - src_y;
+                int new_y = src_x;
+                
+                // 新しい位置にピクセルを設定
+                int dst_pos = new_y * ((char_height + 1) / 2) + (new_x / 2);
+                
+                if (new_x % 2 == 0) {
+                    rotated_data[dst_pos] = (rotated_data[dst_pos] & 0xF0) | src_pixel;
+                } else {
+                    rotated_data[dst_pos] = (rotated_data[dst_pos] & 0x0F) | (src_pixel << 4);
+                }
+            }
+        }
+        
+        // 太字表示の場合、同じ文字を1ピクセル右にもう一度描画
+        for (int by = 0; by < char_width; by++) {
+            for (int bx = 0; bx < char_height; bx++) {
+                int pixel_pos = by * ((char_height + 1) / 2) + (bx / 2);
+                uint8_t pixel;
+                
+                if (bx % 2 == 0) {
+                    pixel = (rotated_data[pixel_pos] & 0x0F);
+                } else {
+                    pixel = (rotated_data[pixel_pos] & 0xF0) >> 4;
+                }
+                
+                // 色調整（必要な場合）
+                if (pixel != 0 && pixel != config->bg_color) {
+                    // 0（黒）と15（白）の間でテキスト色を設定
+                    pixel = config->text_color;
+                    
+                    // ピクセルを描画
+                    int px = draw_x + bx;
+                    int py = draw_y + by;
+                    
+                    // 実際のピクセル描画（EPDラッパー使用）
+                    epd_wrapper_draw_pixel(wrapper, px, py, pixel);
+                    
+                    // 太字処理
+                    if (config->bold && bx < char_height - 1) {
+                        epd_wrapper_draw_pixel(wrapper, px + bold_offset, py, pixel);
+                    }
+                }
+            }
+        }
+        
+        // 回転用の一時バッファを解放
+        heap_caps_free(rotated_data);
+        
+    } else {
+        // 通常の描画（回転なし）
+        for (int by = 0; by < char_height; by++) {
+            for (int bx = 0; bx < char_width; bx++) {
+                // ビットマップデータから4bitピクセル値を取得
+                int bitmap_pos = by * ((char_width + 1) / 2) + (bx / 2);
+                uint8_t pixel;
+                
+                if (bx % 2 == 0) {
+                    pixel = (bitmap[bitmap_pos] & 0x0F);
+                } else {
+                    pixel = (bitmap[bitmap_pos] & 0xF0) >> 4;
+                }
+                
+                // 色調整（必要な場合）
+                if (pixel != 0 && pixel != config->bg_color) {
+                    // 0（黒）と15（白）の間でテキスト色を設定
+                    pixel = config->text_color;
+                    
+                    // ピクセルを描画
+                    int px = draw_x + bx;
+                    int py = draw_y + by;
+                    
+                    // 実際のピクセル描画（EPDラッパー使用）
+                    uint8_t color_8bit = (pixel << 4) | pixel; // 4ビット値を8ビットに拡張
+                    epd_draw_pixel(px, py, color_8bit, wrapper->framebuffer);
+                    
+                    // 太字処理
+                    if (config->bold && bx < char_width - 1) {
+                        epd_draw_pixel(px + bold_offset, py, color_8bit, wrapper->framebuffer);
+                    }
+                }
+            }
+        }
+    }
+    
+    // 下線描画（有効な場合）
+    if (config->underline) {
+        int line_y = draw_y + char_height + 1;
+        int line_width = char_info->width;
+        
+        // 縦書きモードで回転する文字の場合
+        if (config->vertical && rotate_this_char) {
+            // 縦書きの下線は文字の右側に描画
+            int line_x = draw_x + char_height + 1;
+            epd_wrapper_draw_line(wrapper, line_x, draw_y, line_x, draw_y + char_width, config->text_color);
+        } else {
+            // 横書きの下線は文字の下に描画
+            epd_wrapper_draw_line(wrapper, draw_x, line_y, draw_x + line_width, line_y, config->text_color);
+        }
+    }
+    
+    // 返り値：描画した文字の幅
+    return char_info->width + config->char_spacing;
+}
  
  int epd_text_draw_string(EPDWrapper* wrapper, int x, int y, const char* text, const EPDTextConfig* config) {
      ESP_LOGW(TAG, "epd_text_draw_string not fully implemented yet");
