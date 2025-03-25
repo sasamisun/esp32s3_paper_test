@@ -1,19 +1,11 @@
-/* custom_linker_sections.ld */
+/* PSRAM配置 */
 SECTIONS
 {
-  /* アプリケーション記述子セクションとROデータセクションを明示的に連続化 */
-  .flash.appdesc :
+  psram_segment (NOLOAD) : ALIGN(4)
   {
-    *(.flash.appdesc)
-  } > default_rodata_seg
-
-  .flash.rodata :
-  {
-    *(.rodata)
-    *(.rodata.*)
-    *(.irom.text) /* irom0のテキスト領域 */
-    *(.gnu.linkonce.r.*)
-    *(.rodata1)
-    __rodata_end = ABSOLUTE(.);
-  } > default_rodata_seg
+      . = ALIGN(4);
+      *(.rodata.font*)      /* フォントデータをPSRAMに配置 */
+      *(.ext_ram.bss*)      /* PSRAM用BSS領域 */
+      . = ALIGN(4);
+  } > external_ram
 }

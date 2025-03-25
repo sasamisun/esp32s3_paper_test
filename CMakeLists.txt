@@ -8,5 +8,7 @@ project(esp32s3_paper_test)
 target_compile_options(${PROJECT_NAME}.elf PRIVATE -DCONFIG_SPIRAM_SUPPORT)
 # PSRAMの使用を許可するリンカーフラグ
 target_link_options(${PROJECT_NAME}.elf PRIVATE "-Wl,--allow-multiple-definition")
-# カスタムリンカースクリプト
-# target_link_options(${PROJECT_NAME}.elf PRIVATE "-T${CMAKE_CURRENT_SOURCE_DIR}/custom_linker_sections.ld")
+# カスタムリンカースクリプトを追加
+# target_linker_script(${PROJECT_NAME}.elf PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/custom_linker_sections.ld")
+set(EXTRA_LDFLAGS "${CMAKE_CURRENT_SOURCE_DIR}/custom_linker_sections.ld")
+

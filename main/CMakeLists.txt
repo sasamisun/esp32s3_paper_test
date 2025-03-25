@@ -13,3 +13,7 @@ idf_component_register(
     INCLUDE_DIRS 
         "."
 )
+# file paths relative to CMakeLists.txt
+#set(COMPONENT_ADD_LDFRAGMENTS "./linker_fragment_file.lf")
+
+#register_component()
