@@ -130,13 +130,13 @@ def generate_font_header(font_path, font_size, charset, output_file, optimize_wi
         f.write("#include \"epd_text.h\"  // フォント構造体の定義\n\n")
         
         # 文字情報配列
-        f.write(f"EXT_RAM_BSS_ATTR const FontCharInfo {chars_var_name}[] = {{\n")
+        f.write(f"const FontCharInfo {chars_var_name}[] __attribute__((section(\".rodata.font\"))) = {{\n")
         for code_point, width, offset, img_width, img_height in char_infos:
             f.write(f"    {{ 0x{code_point:04X}, {width}, {offset}U, {img_width}, {img_height} }},\n")
         f.write("};\n\n")
         
         # ビットマップデータ
-        f.write(f"EXT_RAM_BSS_ATTR uint8_t {bitmap_var_name}[] = {{\n    ")
+        f.write(f"const uint8_t {bitmap_var_name}[] __attribute__((section(\".rodata.font\"))) = {{\n    ")
         for i, byte in enumerate(bitmap_data):
             f.write(f"0x{byte:02X}, ")
             if (i + 1) % 16 == 0:

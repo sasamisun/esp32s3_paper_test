@@ -35,6 +35,8 @@ static const char *TAG = "epd_example";
 void draw_sprash(EPDWrapper *wrapper);
 void transition(EPDWrapper *epd, const uint8_t *newimage, TransitionType type);
 void test_text_display(EPDWrapper *wrapper);
+void test_text_drawing(EPDWrapper* wrapper);
+void test_multiline_text(EPDWrapper* wrapper);
 
 void app_main(void)
 {
@@ -73,7 +75,7 @@ void app_main(void)
     // vTaskDelay(500 / portTICK_PERIOD_MS);
     // transition(&epd, bg1_data, TRANSITION_SLIDE_LEFT);
     // vTaskDelay(500 / portTICK_PERIOD_MS);
-    //transition(&epd, bg2_data, TRANSITION_SLIDE_UP);
+    // transition(&epd, bg2_data, TRANSITION_SLIDE_UP);
 
     // テキスト表示テスト
     test_text_display(&epd);
@@ -283,123 +285,233 @@ void transition(EPDWrapper *epd, const uint8_t *image_data, TransitionType type)
 // 既存の app_main 関数に追加するテキスト表示のテスト関数
 void test_text_display(EPDWrapper *epd)
 {
-    ESP_LOGI(TAG, "Starting text display test");
     // テキスト設定の初期化
     ESP_LOGI(TAG, "Initializing text configuration");
     EPDTextConfig text_config;
     epd_text_config_init(&text_config, &Mplus2_Light_16);
 
-    // epd_main.c の app_main() 関数内に追加
-    // フォントテスト
-    ESP_LOGI(TAG, "Drawing text test");
-
-    // 日本語文字表示テスト
-    uint32_t japanese_chars[] = {
-        0x3042, // あ
-        0x3044, // い
-        0x3046, // う
-        0x3048, // え
-        0x304A  // お
-    };
-
-    int char_x = 50;
-    int char_y = 50;
-
-    for (int i = 0; i < sizeof(japanese_chars) / sizeof(japanese_chars[0]); i++)
-    {
-        int width = epd_text_draw_char(epd, char_x, char_y, japanese_chars[i], &text_config);
-        char_x += width + 5; // 5ピクセルの間隔を追加
-    }
-
-    // 英数字表示テスト
-    char_x = 50;
-    char_y = 100;
-
-    for (char c = 'A'; c <= 'Z'; c++)
-    {
-        int width = epd_text_draw_char(epd, char_x, char_y, c, &text_config);
-        char_x += width + 2; // 2ピクセルの間隔を追加
-    }
-
-    char_x = 50;
-    char_y = 150;
-
-    for (char c = '0'; c <= '9'; c++)
-    {
-        int width = epd_text_draw_char(epd, char_x, char_y, c, &text_config);
-        char_x += width + 2;
-    }
-
-    // 太字テスト
-    char_x = 50;
-    char_y = 200;
-    text_config.bold = true;
-    text_config.text_color = 0x00; // 黒色で表示
-
-    int width = epd_text_draw_char(epd, char_x, char_y, 'B', &text_config);
-    char_x += width + 5;
-    width = epd_text_draw_char(epd, char_x, char_y, 0x6F22, &text_config); // '漢'
-    char_x += width + 5;
-
-    // 下線テスト
-    text_config.bold = false;
-    text_config.underline = true;
-    width = epd_text_draw_char(epd, char_x, char_y, 'U', &text_config);
-    char_x += width + 5;
-    width = epd_text_draw_char(epd, char_x, char_y, 0x5B57, &text_config); // '字'
-
-    // 縦書きテスト
-    char_x = 300;
-    char_y = 50;
-    text_config.vertical = true;
-    text_config.bold = false;
-    text_config.underline = false;
-    text_config.text_color = 0x00; // 黒色で表示
-
-    // 縦書きCJK文字
-    for (int i = 0; i < sizeof(japanese_chars) / sizeof(japanese_chars[0]); i++)
-    {
-        int height = epd_text_draw_char(epd, char_x, char_y, japanese_chars[i], &text_config);
-        char_y += height + 5; // 縦書きなので次は下に
-    }
-
-    // 縦書き英字（回転テスト）
-    char_x = 350;
-    char_y = 50;
-    text_config.rotate_non_cjk = true;
-
-    for (char c = 'A'; c <= 'E'; c++)
-    {
-        int height = epd_text_draw_char(epd, char_x, char_y, c, &text_config);
-        char_y += height + 5;
-    }
-
-    // 背景色テスト
-    char_x = 400;
-    char_y = 50;
-    text_config.vertical = false;
-    text_config.bg_transparent = false;
-    text_config.bg_color = 0x0C;   // 薄いグレー
-    text_config.text_color = 0x00; // 黒
-
-    width = epd_text_draw_char(epd, char_x, char_y, 'A', &text_config);
-    char_y += 30;
-    width = epd_text_draw_char(epd, char_x, char_y, 0x65E5, &text_config); // '日'
-    char_y += 30;
-    text_config.text_color = 0x0F; // 白
-    text_config.bg_color = 0x00;   // 黒背景
-    width = epd_text_draw_char(epd, char_x, char_y, 'B', &text_config);
-    char_y += 30;
-    width = epd_text_draw_char(epd, char_x, char_y, 0x672C, &text_config); // '本'
-
-    // 設定を元に戻す
-    text_config.vertical = false;
-    text_config.bg_transparent = true;
-    text_config.bold = false;
-    text_config.underline = false;
+    // テキスト色を黒に設定
     text_config.text_color = 0x00;
 
-    // 画面更新
+    // 文字描画テスト
+    ESP_LOGI(TAG, "Drawing single characters test");
+
+    // 「あ」を描画
+    int x_pos = 50;
+    int y_pos = 50;
+    int width = epd_text_draw_char(epd, x_pos, y_pos, 0x3042, &text_config);
+    ESP_LOGI(TAG, "Drew character 'あ' with width: %d", width);
+
+    // 「い」を描画
+    x_pos += width + 5; // 前の文字の幅 + 間隔
+    width = epd_text_draw_char(epd, x_pos, y_pos, 0x3044, &text_config);
+    ESP_LOGI(TAG, "Drew character 'い' with width: %d", width);
+
+    // 「う」を描画
+    x_pos += width + 5;
+    width = epd_text_draw_char(epd, x_pos, y_pos, 0x3046, &text_config);
+    ESP_LOGI(TAG, "Drew character 'う' with width: %d", width);
+
+    // 英数字テスト
+    x_pos = 50;
+    y_pos += 50; // 次の行
+    width = epd_text_draw_char(epd, x_pos, y_pos, 'A', &text_config);
+    ESP_LOGI(TAG, "Drew character 'A' with width: %d", width);
+
+    x_pos += width + 5;
+    width = epd_text_draw_char(epd, x_pos, y_pos, 'B', &text_config);
+    ESP_LOGI(TAG, "Drew character 'B' with width: %d", width);
+
+    x_pos += width + 5;
+    width = epd_text_draw_char(epd, x_pos, y_pos, 'C', &text_config);
+    ESP_LOGI(TAG, "Drew character 'C' with width: %d", width);
+
+    // 記号テスト
+    x_pos = 50;
+    y_pos += 50; // 次の行
+    width = epd_text_draw_char(epd, x_pos, y_pos, '!', &text_config);
+    ESP_LOGI(TAG, "Drew character '!' with width: %d", width);
+
+    x_pos += width + 5;
+    width = epd_text_draw_char(epd, x_pos, y_pos, '@', &text_config);
+    ESP_LOGI(TAG, "Drew character '@' with width: %d", width);
+
+    x_pos += width + 5;
+    width = epd_text_draw_char(epd, x_pos, y_pos, '#', &text_config);
+    ESP_LOGI(TAG, "Drew character '#' with width: %d", width);
+
+    // 白色の文字も試す
+    text_config.text_color = 0xFF;
+    x_pos = 50;
+    y_pos += 50; // 次の行
+
+    // 白色の背景矩形を描画
+    epd_wrapper_fill_rect(epd, x_pos - 5, y_pos - 5, 200, 40, 0x00);
+
+    width = epd_text_draw_char(epd, x_pos, y_pos, 0x6F22, &text_config); // 漢
+    ESP_LOGI(TAG, "Drew character '漢' in white with width: %d", width);
+
+    x_pos += width + 5;
+    width = epd_text_draw_char(epd, x_pos, y_pos, 0x5B57, &text_config); // 字
+    ESP_LOGI(TAG, "Drew character '字' in white with width: %d", width);
+
+    // フレームバッファを画面に表示
     ESP_LOGI(TAG, "Updating display");
     epd_wrapper_update_screen(epd, MODE_GC16);
+}
+
+/**
+ * @brief テキスト描画機能のテスト
+ * @param wrapper EPDラッパー構造体へのポインタ
+ */
+void test_text_drawing(EPDWrapper* wrapper) {
+    ESP_LOGI(TAG, "Starting text drawing tests");
+    
+    // テキスト設定の初期化
+    EPDTextConfig text_config;
+    epd_text_config_init(&text_config, &Mplus2_Light_16);
+    
+    // 表示領域の取得
+    int display_width = epd_wrapper_get_width(wrapper);
+    //int display_height = epd_wrapper_get_height(wrapper);
+    
+    // ディスプレイをクリア
+    epd_wrapper_fill(wrapper, 0xFF);
+    
+    // 横書きテスト
+    ESP_LOGI(TAG, "Testing horizontal text");
+    text_config.vertical = false;
+    text_config.text_color = 0x00;  // 黒
+    text_config.underline = false;
+    
+    int y_pos = 50;
+    int drawn_width = epd_text_draw_string(wrapper, 50, y_pos, "こんにちは世界！", &text_config);
+    ESP_LOGI(TAG, "Drew horizontal string with width: %d", drawn_width);
+    
+    // 下線付きテスト
+    y_pos += 40;
+    text_config.underline = true;
+    drawn_width = epd_text_draw_string(wrapper, 50, y_pos, "Hello, World!", &text_config);
+    ESP_LOGI(TAG, "Drew underlined string with width: %d", drawn_width);
+    
+    // 長い文字列のクリッピングテスト
+    y_pos += 40;
+    text_config.underline = false;
+    const char* long_string = "これは非常に長い文字列で、画面の端を超えるとクリッピングされるはずです。";
+    drawn_width = epd_text_draw_string(wrapper, 50, y_pos, long_string, &text_config);
+    ESP_LOGI(TAG, "Drew clipped long string with width: %d", drawn_width);
+    
+    // 縦書きテスト
+    ESP_LOGI(TAG, "Testing vertical text");
+    text_config.vertical = true;
+    text_config.text_color = 0x00;  // 黒
+    
+    int x_pos = display_width - 50;
+    int drawn_height = epd_text_draw_string(wrapper, x_pos, 50, "縦書きテスト", &text_config);
+    ESP_LOGI(TAG, "Drew vertical string with height: %d", drawn_height);
+    
+    // 白黒反転テスト
+    epd_wrapper_fill_rect(wrapper, 50, 200, 200, 40, 0x00);  // 黒い背景矩形
+    
+    text_config.vertical = false;
+    text_config.text_color = 0xFF;  // 白
+    drawn_width = epd_text_draw_string(wrapper, 70, 210, "White on Black", &text_config);
+    ESP_LOGI(TAG, "Drew white on black text with width: %d", drawn_width);
+    
+    // 画面を更新
+    epd_wrapper_update_screen(wrapper, MODE_GC16);
+}
+
+/**
+ * @brief マルチラインテキスト描画のテスト
+ * @param wrapper EPDラッパー構造体へのポインタ
+ */
+void test_multiline_text(EPDWrapper* wrapper) {
+    ESP_LOGI(TAG, "Starting multiline text drawing tests");
+    
+    // テキスト設定の初期化
+    EPDTextConfig text_config;
+    epd_text_config_init(&text_config, &Mplus2_Light_16);
+    
+    // ディスプレイサイズを取得
+    int display_width = epd_wrapper_get_width(wrapper);
+    int display_height = epd_wrapper_get_height(wrapper);
+    
+    // ディスプレイをクリア
+    epd_wrapper_fill(wrapper, 0xFF);
+    
+    // 矩形領域の定義 - 左上の領域
+    EpdRect rect1 = {
+        .x = 20,
+        .y = 20,
+        .width = 300,
+        .height = 200
+    };
+    
+    // 矩形枠を描画（領域を視覚化）
+    epd_wrapper_draw_rect(wrapper, rect1.x, rect1.y, rect1.width, rect1.height, 0x00);
+    
+    // 横書きマルチラインテスト
+    text_config.vertical = false;
+    text_config.text_color = 0x00;  // 黒
+    text_config.char_spacing = 2;   // 文字間隔
+    text_config.line_spacing = 5;   // 行間
+    
+    const char* long_text = 
+        "これは複数行のテキスト表示テストです。「禁則処理」も考慮されます。\n"
+        "改行も正しく処理され、折り返しも自動的に行われます。\n"
+        "長い行は自動的に折り返されて、矩形領域内に収まるように表示されます。"
+        "句読点（、。）やカッコ「」などは行頭・行末禁則処理の対象です。";
+    
+    int lines = epd_text_draw_multiline(wrapper, rect1.x + 10, rect1.y + 10, &rect1, long_text, &text_config);
+    ESP_LOGI(TAG, "Drew horizontal multiline text with %d lines", lines);
+    
+    // 矩形領域の定義 - 右側の領域
+    EpdRect rect2 = {
+        .x = display_width - 170,
+        .y = 20,
+        .width = 150,
+        .height = 400
+    };
+    
+    // 矩形枠を描画（領域を視覚化）
+    epd_wrapper_draw_rect(wrapper, rect2.x, rect2.y, rect2.width, rect2.height, 0x00);
+    
+    // 縦書きマルチラインテスト
+    text_config.vertical = true;
+    text_config.text_color = 0x00;  // 黒
+    
+    const char* vertical_text = 
+        "縦書きのテキスト表示テストです。\n"
+        "改行も正しく処理されます。\n"
+        "長い行は自動的に折り返されて、矩形領域内に収まるように表示されます。";
+    
+    lines = epd_text_draw_multiline(wrapper, rect2.x + 120, rect2.y + 10, &rect2, vertical_text, &text_config);
+    ESP_LOGI(TAG, "Drew vertical multiline text with %d lines", lines);
+    
+    // 矩形領域の定義 - 下部の領域
+    EpdRect rect3 = {
+        .x = 20,
+        .y = display_height - 150,
+        .width = 500,
+        .height = 120
+    };
+    
+    // 矩形枠を描画（領域を視覚化）
+    epd_wrapper_draw_rect(wrapper, rect3.x, rect3.y, rect3.width, rect3.height, 0x00);
+    epd_wrapper_fill_rect(wrapper, rect3.x, rect3.y, rect3.width, rect3.height, 0x00);
+    
+    // 白文字のマルチラインテスト
+    text_config.vertical = false;
+    text_config.text_color = 0xFF;  // 白
+    
+    const char* white_text = 
+        "これは白背景に白文字で表示するテストです。\n"
+        "このテキストも複数行で表示され、矩形範囲内に収まります。";
+    
+    lines = epd_text_draw_multiline(wrapper, rect3.x + 10, rect3.y + 10, &rect3, white_text, &text_config);
+    ESP_LOGI(TAG, "Drew white multiline text with %d lines", lines);
+    
+    // 画面を更新
+    epd_wrapper_update_screen(wrapper, MODE_GC16);
 }

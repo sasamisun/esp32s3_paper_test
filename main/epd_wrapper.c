@@ -293,18 +293,12 @@ void epd_wrapper_draw_image(EPDWrapper *wrapper, int x, int y, int width, int he
         return;
     }
 
-    // 画像データは回転できないため、90度・270度回転のときは特別な処理が必要
-    // 現在の実装では、画像は単に新しい位置に配置されますが、画像自体は回転されません
-    // より完全な実装では、画像データ自体も回転させる必要があります
-
     EpdRect image_area = {
         .x = x,
         .y = y,
         .width = width,
         .height = height};
 
-    // 注: 画像自体の回転は現在サポートされていません
-    // 完全対応するには、画像データを回転する処理が必要
     epd_copy_to_framebuffer(image_area, image_data, wrapper->framebuffer);
 }
 

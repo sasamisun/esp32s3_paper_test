@@ -106,18 +106,33 @@
   */
  int epd_text_draw_string(EPDWrapper* wrapper, int x, int y, const char* text, const EPDTextConfig* config);
  
- /**
-  * @brief 複数行のテキストを描画する
-  * @param wrapper EPDラッパー構造体へのポインタ
-  * @param x X座標
-  * @param y Y座標
-  * @param text 描画するUTF-8文字列
-  * @param config テキスト描画設定
-  * @return 描画した行数
-  */
- int epd_text_draw_multiline(EPDWrapper* wrapper, int x, int y, const char* text, const EPDTextConfig* config);
+/**
+ * @brief 文字が行頭禁止文字かどうかを判定する
+ * @param code_point 判定するUnicodeコードポイント
+ * @return 行頭禁止文字の場合はtrue、それ以外はfalse
+ */
+bool epd_text_is_no_start_char(uint32_t code_point);
+
+/**
+ * @brief 文字が行末禁止文字かどうかを判定する
+ * @param code_point 判定するUnicodeコードポイント
+ * @return 行末禁止文字の場合はtrue、それ以外はfalse
+ */
+bool epd_text_is_no_end_char(uint32_t code_point);
+
+/**
+ * @brief 複数行のテキストを描画する
+ * @param wrapper EPDラッパー構造体へのポインタ
+ * @param x X座標
+ * @param y Y座標
+ * @param rect 描画領域（この範囲内にテキストを収める）
+ * @param text 描画するUTF-8文字列
+ * @param config テキスト描画設定
+ * @return 描画した行数
+ */
+int epd_text_draw_multiline(EPDWrapper* wrapper, int x, int y, EpdRect* rect, const char* text, const EPDTextConfig* config);
  
- /**
+/**
   * @brief ルビ付きテキストを描画する
   * @param wrapper EPDラッパー構造体へのポインタ
   * @param x X座標
