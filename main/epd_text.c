@@ -661,6 +661,10 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
             const char *segment_start = token;
             int segment_width = 0;
             uint32_t last_code_point = 0;
+            bool pending_wrap = false;
+            
+            // 前の文字を保存するためのバッファ
+            const char* prev_char_start = NULL;
 
             while (*current != '\0')
             {
@@ -681,54 +685,103 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
                     new_width += local_config.char_spacing;
                 }
 
-                // 幅が制限を超える場合の処理
-                if (new_width > local_config.wrap_width)
+                // 幅が制限を超える場合、または前の処理で折り返しが保留になっていた場合の処理
+                if (new_width > local_config.wrap_width || pending_wrap)
                 {
-                    // 行末禁止文字の場合、前の文字で折り返す
-                    if (epd_text_is_no_end_char(last_code_point))
+                    pending_wrap = false;
+                    
+                    // 行頭禁止文字の場合
+                    if (epd_text_is_no_start_char(code_point))
                     {
-                        const char *prev_end = char_start;
-
-                        // 現在のセグメントを追加
-                        if (segment_start < prev_end)
+                        // 前の文字で折り返す
+                        if (prev_char_start != NULL && segment_start < prev_char_start)
                         {
+                            // 現在のセグメントを前の文字までとして追加
                             segments[segment_count++] = segment_start;
-                        }
-
-                        // 次のセグメントを開始
-                        segment_start = prev_end;
-                        segment_width = char_info->width;
-                    }
-                    else
-                    {
-                        // 行頭禁止文字の場合、この文字も一緒に折り返す
-                        if (epd_text_is_no_start_char(code_point))
-                        {
-                            // 現在のセグメントを追加（この文字を含めずに）
-                            if (segment_start < char_start)
-                            {
-                                segments[segment_count++] = segment_start;
-                            }
-
-                            // 次のセグメントを開始（この文字から）
-                            segment_start = char_start;
-                            segment_width = char_info->width;
+                            
+                            // 前の文字から始まる新しいセグメントを開始
+                            segment_start = prev_char_start;
+                            
+                            // 前の文字と現在の文字の幅を計算
+                            const FontCharInfo *prev_char_info = epd_text_find_char(local_config.font, last_code_point);
+                            segment_width = (prev_char_info != NULL ? prev_char_info->width : 0) + 
+                                           local_config.char_spacing + char_info->width;
                         }
                         else
                         {
-                            // 通常の折り返し
+                            // 前の文字がない場合は通常の折り返し
                             segments[segment_count++] = segment_start;
                             segment_start = char_start;
                             segment_width = char_info->width;
                         }
+                    }
+                    // 行末禁止文字だった場合
+                    else if (epd_text_is_no_end_char(last_code_point))
+                    {
+                        // 行末禁止文字と現在の文字を次の行に送る
+                        if (prev_char_start != NULL && segment_start < prev_char_start)
+                        {
+                            // 直前の行末禁止文字の前までをセグメントとして追加
+                            segments[segment_count++] = segment_start;
+                            
+                            // 行末禁止文字から新しいセグメントを開始
+                            segment_start = prev_char_start;
+                            
+                            // 行末禁止文字と現在の文字の幅を計算
+                            const FontCharInfo *prev_char_info = epd_text_find_char(local_config.font, last_code_point);
+                            segment_width = (prev_char_info != NULL ? prev_char_info->width : 0) + 
+                                           local_config.char_spacing + char_info->width;
+                        }
+                        else
+                        {
+                            // 通常の折り返し（最初の文字が行末禁止文字の場合）
+                            segments[segment_count++] = segment_start;
+                            segment_start = char_start;
+                            segment_width = char_info->width;
+                        }
+                    }
+                    else
+                    {
+                        // 通常の折り返し
+                        segments[segment_count++] = segment_start;
+                        segment_start = char_start;
+                        segment_width = char_info->width;
                     }
                 }
                 else
                 {
+                    // 次の文字を見て、それが行頭禁止文字かつ現在の行に収まらない場合、
+                    // 現在の文字で折り返しを保留
+                    const char *next_char_start = current;
+                    if (*next_char_start != '\0')
+                    {
+                        const char *next_current = next_char_start;
+                        uint32_t next_code_point = epd_text_utf8_next_char(&next_current);
+                        
+                        if (epd_text_is_no_start_char(next_code_point))
+                        {
+                            // 次の文字の情報を取得
+                            const FontCharInfo *next_char_info = epd_text_find_char(local_config.font, next_code_point);
+                            if (next_char_info != NULL)
+                            {
+                                // 次の文字を追加した場合の幅を計算
+                                int next_width = new_width + next_char_info->width + local_config.char_spacing;
+                                
+                                if (next_width > local_config.wrap_width)
+                                {
+                                    // 行頭禁止文字が次の行に来てしまう場合、現在の文字でも折り返す
+                                    pending_wrap = true;
+                                }
+                            }
+                        }
+                    }
+                    
                     // 幅が制限内の場合、幅を更新
                     segment_width = new_width;
                 }
 
+                // 前の文字の位置を記録
+                prev_char_start = char_start;
                 last_code_point = code_point;
             }
 

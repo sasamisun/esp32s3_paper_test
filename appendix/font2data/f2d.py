@@ -19,7 +19,13 @@ def optimize_char_width(img):
     if not non_empty_cols:
         return 0
     
-    return max(non_empty_cols) - min(non_empty_cols) + 1
+    # 最小と最大の非空白列を取得し、幅を計算
+    # 追加の余白を設けるために、右側にパディングを追加
+    min_col = min(non_empty_cols)
+    max_col = max(non_empty_cols)
+    padding = 2  # 右側に追加するパディング
+    
+    return max_col - min_col + 1 + padding
 
 def load_charset_from_file(file_path):
     """ファイルから文字セットを読み込む"""
@@ -81,21 +87,69 @@ def generate_font_header(font_path, font_size, charset, output_file, optimize_wi
     # 各文字をビットマップに変換
     for i, char in enumerate(charset):
         try:
+            # スペース文字の特別処理
+            if char == ' ':  # 半角スペース
+                # 半角スペースは幅を指定サイズの半分に設定
+                char_width = font_size // 2
+                char_height = font_size
+                img_width = char_width
+                img_height = calculated_height
+                
+                # 空の画像を作成（すべて白）
+                img = Image.new('1', (img_width, img_height), color=255)
+                
+                # データを追加
+                data_offset = len(bitmap_data)
+                
+                # バイト境界に合わせたビットマップデータ作成
+                byte_width = (img_width + 7) // 8
+                row_bytes = bytearray(byte_width * img_height)
+                bitmap_data.extend(row_bytes)
+                
+                # 文字情報を記録
+                code_point = ord(char)
+                char_infos.append((code_point, char_width, data_offset, img_width, img_height))
+                continue
+                
+            elif char == '\u3000':  # 全角スペース（U+3000）
+                # 全角スペースは幅を指定サイズと同じに設定
+                char_width = font_size
+                char_height = font_size
+                img_width = char_width
+                img_height = calculated_height
+                
+                # 空の画像を作成（すべて白）
+                img = Image.new('1', (img_width, img_height), color=255)
+                
+                # データを追加
+                data_offset = len(bitmap_data)
+                
+                # バイト境界に合わせたビットマップデータ作成
+                byte_width = (img_width + 7) // 8
+                row_bytes = bytearray(byte_width * img_height)
+                bitmap_data.extend(row_bytes)
+                
+                # 文字情報を記録
+                code_point = ord(char)
+                char_infos.append((code_point, char_width, data_offset, img_width, img_height))
+                continue
+            
             # テキストのサイズを取得
             bbox = font.getbbox(char)
             char_width = bbox[2] - bbox[0]
             char_height = bbox[3] - bbox[1]
             
-            # 画像サイズは最大でもフォントサイズに制限
-            img_width = min(font_size, char_width + 4)  # 余白を含める
+            # 画像サイズは最大でもフォントサイズに制限するが、余裕を持たせる
+            padding = 4  # 左右の余白
+            img_width = min(font_size * 2, char_width + padding)  # 横幅に余裕を持たせる
             img_height = calculated_height
             
             # 画像作成
             img = Image.new('1', (img_width, img_height), color=255)
             draw = ImageDraw.Draw(img)
             # ベースラインを考慮して文字を配置
-            # 文字の左上を (2, 0) から描画開始
-            draw.text((2, 0), char, font=font, fill=0)
+            # 文字の左上を (padding/2, 0) から描画開始
+            draw.text((padding // 2, 0), char, font=font, fill=0)
             
             # 最適化された文字幅を取得
             width = char_width
@@ -182,7 +236,7 @@ def main():
     args = parser.parse_args()
     
     # 文字セット読み込み
-    charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん"
+    charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん　" # 全角スペースを追加
     if args.charset:
         try:
             charset = load_charset_from_file(args.charset)
