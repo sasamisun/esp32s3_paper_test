@@ -314,7 +314,7 @@ int epd_text_draw_char(EPDWrapper *wrapper, int x, int y, uint32_t code_point, c
              char_info->width, char_info->img_width, char_info->img_height);
 
     // 文字の描画
-    for (int dy = 0; dy < char_info->img_height; dy++)
+    for (int dy = 0; dy < char_info->img_height+4; dy++)
     {
         for (int dx = 0; dx < char_info->img_width; dx++)
         {
@@ -327,8 +327,13 @@ int epd_text_draw_char(EPDWrapper *wrapper, int x, int y, uint32_t code_point, c
             if (pixel_is_set)
             {
                 epd_draw_pixel(x + dx, y + dy, draw_color, wrapper->framebuffer);
+                //ESP_LOGI(TAG, "*");
+            }else{
+                //ESP_LOGI(TAG, "_");
             }
         }
+        
+        //ESP_LOGI(TAG, "##############");
     }
 
     if (config->vertical)

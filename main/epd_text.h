@@ -31,6 +31,7 @@
  typedef struct {
      uint8_t size;             // フォントの基本サイズ
      uint8_t max_height;       // 最大の文字高さ
+     uint16_t baseline;        // ベースラインの位置（上からの距離）s
      const char* style;        // フォントスタイル
      uint16_t chars_count;     // 収録文字数
      const FontCharInfo* chars; // 文字情報配列

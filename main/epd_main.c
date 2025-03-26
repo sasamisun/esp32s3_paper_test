@@ -78,7 +78,8 @@ void app_main(void)
     // transition(&epd, bg2_data, TRANSITION_SLIDE_UP);
 
     // テキスト表示テスト
-    test_text_display(&epd);
+    //test_text_display(&epd);
+    test_multiline_text(&epd);
     // 更新後しばらく待機
     vTaskDelay(1000 / portTICK_PERIOD_MS);
 
@@ -103,7 +104,7 @@ void draw_sprash(EPDWrapper *epd)
     epd_wrapper_clear_cycles(epd, 3);
 
     // 90度回転させて再描画
-    uint8_t rotation = 3; // 90度回転
+    uint8_t rotation = 0; // 90度回転
     ESP_LOGI(TAG, "Changing rotation to %d (%d degrees)", rotation, rotation * 90);
 
     // 回転を設定

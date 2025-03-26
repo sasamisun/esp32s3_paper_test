@@ -51,6 +51,15 @@ def generate_font_header(font_path, font_size, charset, output_file, optimize_wi
         print(f"警告: {font_path} を読み込めませんでした。サポートされていないフォント形式かもしれません。")
         return False
     
+    # フォントのメトリクスを取得
+    ascent, descent = font.getmetrics()
+    actual_font_height = ascent + descent
+    
+    # フォントのベースライン位置を計算（アセントが文字のベースラインから上の部分）
+    baseline = ascent
+    
+    print(f"フォント情報: サイズ={font_size}, 高さ={actual_font_height}, アセント={ascent}, ディセント={descent}, ベースライン={baseline}")
+    
     char_infos = []
     bitmap_data = bytearray()
     
@@ -64,8 +73,10 @@ def generate_font_header(font_path, font_size, charset, output_file, optimize_wi
         except:
             pass
     
-    # 余裕を持たせる
-    max_height = min(font_size, max_height + 2)
+    # 実際のフォント高さと最大文字高さの比較、適切な余裕を持たせる
+    calculated_height = min(actual_font_height, max_height + 2)
+    
+    print(f"最大文字高さ: {max_height}, 計算後の高さ: {calculated_height}")
     
     # 各文字をビットマップに変換
     for i, char in enumerate(charset):
@@ -77,11 +88,13 @@ def generate_font_header(font_path, font_size, charset, output_file, optimize_wi
             
             # 画像サイズは最大でもフォントサイズに制限
             img_width = min(font_size, char_width + 4)  # 余白を含める
-            img_height = max_height
+            img_height = calculated_height
             
             # 画像作成
             img = Image.new('1', (img_width, img_height), color=255)
             draw = ImageDraw.Draw(img)
+            # ベースラインを考慮して文字を配置
+            # 文字の左上を (2, 0) から描画開始
             draw.text((2, 0), char, font=font, fill=0)
             
             # 最適化された文字幅を取得
@@ -146,7 +159,8 @@ def generate_font_header(font_path, font_size, charset, output_file, optimize_wi
         # フォント情報構造体
         f.write(f"const FontInfo {font_var_name} = {{\n")
         f.write(f"    .size = {font_size},\n")
-        f.write(f"    .max_height = {max_height},\n")
+        f.write(f"    .max_height = {calculated_height},\n")
+        f.write(f"    .baseline = {baseline},\n")
         f.write(f"    .style = \"{style}\",\n")
         f.write(f"    .chars_count = {len(char_infos)},\n")
         f.write(f"    .chars = {chars_var_name},\n")
