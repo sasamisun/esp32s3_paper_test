@@ -1,10 +1,10 @@
 /**
  * @file epd_text.h
- * @brief 電子ペーパーディスプレイ向けテキスト表示機能
- * 
- * UTF-8テキストを電子ペーパーディスプレイに表示するための機能を提供します。
- * 横書き・縦書き対応、ルビ表示、複数行テキスト対応など、
- * 豊富なタイポグラフィ機能をサポートします。
+ * @brief 電子ペーパーディスプレイ用のテキスト描画ライブラリ
+ *
+ * このライブラリは、EPDラッパーを使用して電子ペーパーディスプレイに
+ * テキストを描画するための機能を提供します。日本語フォントの描画や
+ * 縦書き表示、ルビの表示にも対応しています。
  */
 
  #ifndef EPD_TEXT_H
@@ -15,7 +15,16 @@
  #include "epd_wrapper.h"
  
  /**
-  * @brief フォント文字情報
+  * @brief タイポグラフィフラグの定義
+  */
+ #define TYPO_FLAG_NEEDS_ROTATION  0x01  // 縦書き時に回転が必要
+ #define TYPO_FLAG_HALFWIDTH       0x02  // 半角文字
+ #define TYPO_FLAG_FULLWIDTH       0x04  // 全角文字
+ #define TYPO_FLAG_NO_BREAK_START  0x08  // 行頭禁則文字
+ #define TYPO_FLAG_NO_BREAK_END    0x10  // 行末禁則文字
+ 
+ /**
+  * @brief フォント文字情報構造体
   */
  typedef struct {
      uint32_t code_point;   // Unicode値（UTF-32）
@@ -23,15 +32,19 @@
      uint32_t data_offset;  // ビットマップデータの開始位置
      uint8_t img_width;     // 画像全体の幅
      uint8_t img_height;    // 画像全体の高さ
+     uint8_t typo_flags;    // タイポグラフィフラグ
+     uint8_t rotation;      // 縦書き時の回転（0: 0度, 1: 90度, 2: 180度, 3: 270度）
+     int8_t x_offset;       // X方向オフセット（表示位置の微調整用）
+     int8_t y_offset;       // Y方向オフセット（表示位置の微調整用）
  } FontCharInfo;
  
  /**
-  * @brief フォント情報
+  * @brief フォント情報構造体
   */
  typedef struct {
      uint8_t size;             // フォントの基本サイズ
      uint8_t max_height;       // 最大の文字高さ
-     uint16_t baseline;        // ベースラインの位置（上からの距離）s
+     uint16_t baseline;        // ベースラインの位置（上からの距離）
      const char* style;        // フォントスタイル
      uint16_t chars_count;     // 収録文字数
      const FontCharInfo* chars; // 文字情報配列
@@ -39,7 +52,7 @@
  } FontInfo;
  
  /**
-  * @brief テキスト配置方向
+  * @brief テキスト配置方向の列挙型
   */
  typedef enum {
      EPD_TEXT_ALIGN_LEFT,     // 左揃え（横書き時）/ 上揃え（縦書き時）
@@ -48,7 +61,7 @@
  } EPDTextAlignment;
  
  /**
-  * @brief テキスト描画設定
+  * @brief テキスト描画設定構造体
   */
  typedef struct {
      // フォント関連
@@ -60,7 +73,7 @@
      bool vertical;             // 縦書きモード
      int line_spacing;          // 行間（ピクセル単位）
      int char_spacing;          // 文字間隔（ピクセル単位）
-     EPDTextAlignment alignment; // テキスト揃え方向
+     EPDTextAlignment alignment; // テキスト揃え方
      bool rotate_non_cjk;       // 非CJK文字を縦書き時に回転するか
      
      // 装飾関連
@@ -76,10 +89,12 @@
      // その他の設定
      int wrap_width;            // テキスト折り返し幅（0の場合は折り返しなし）
      bool enable_kerning;       // カーニングを有効にするか
+     bool use_baseline;         // ベースライン調整を使用するか
+     bool use_typo_flags;       // タイポグラフィフラグを使用するか
  } EPDTextConfig;
  
  /**
-  * @brief テキスト描画設定を初期化する
+  * @brief テキスト設定を初期化する
   * @param config 初期化する設定構造体へのポインタ
   * @param font 使用するフォント情報
   */
@@ -97,57 +112,43 @@
  int epd_text_draw_char(EPDWrapper* wrapper, int x, int y, uint32_t code_point, const EPDTextConfig* config);
  
  /**
-  * @brief UTF-8文字列を描画する
+  * @brief UTF-8テキストを1行で描画する
   * @param wrapper EPDラッパー構造体へのポインタ
   * @param x X座標
   * @param y Y座標
-  * @param text 描画するUTF-8文字列
+  * @param text 描画するUTF-8テキスト
   * @param config テキスト描画設定
-  * @return 描画した文字列の幅
+  * @return 描画したテキストの幅
   */
  int epd_text_draw_string(EPDWrapper* wrapper, int x, int y, const char* text, const EPDTextConfig* config);
  
-/**
- * @brief 文字が行頭禁止文字かどうかを判定する
- * @param code_point 判定するUnicodeコードポイント
- * @return 行頭禁止文字の場合はtrue、それ以外はfalse
- */
-bool epd_text_is_no_start_char(uint32_t code_point);
-
-/**
- * @brief 文字が行末禁止文字かどうかを判定する
- * @param code_point 判定するUnicodeコードポイント
- * @return 行末禁止文字の場合はtrue、それ以外はfalse
- */
-bool epd_text_is_no_end_char(uint32_t code_point);
-
-/**
- * @brief 複数行のテキストを描画する
- * @param wrapper EPDラッパー構造体へのポインタ
- * @param x X座標
- * @param y Y座標
- * @param rect 描画領域（この範囲内にテキストを収める）
- * @param text 描画するUTF-8文字列
- * @param config テキスト描画設定
- * @return 描画した行数
- */
-int epd_text_draw_multiline(EPDWrapper* wrapper, int x, int y, EpdRect* rect, const char* text, const EPDTextConfig* config);
+ /**
+  * @brief 複数行のテキストを描画する
+  * @param wrapper EPDラッパー構造体へのポインタ
+  * @param x X座標
+  * @param y Y座標
+  * @param rect 描画領域（この範囲内にテキストを収める）
+  * @param text 描画するUTF-8テキスト
+  * @param config テキスト描画設定
+  * @return 描画した行数
+  */
+ int epd_text_draw_multiline(EPDWrapper* wrapper, int x, int y, EpdRect* rect, const char* text, const EPDTextConfig* config);
  
-/**
+ /**
   * @brief ルビ付きテキストを描画する
   * @param wrapper EPDラッパー構造体へのポインタ
   * @param x X座標
   * @param y Y座標
-  * @param text 親文字（描画するUTF-8文字列）
-  * @param ruby ルビ（描画するUTF-8文字列）
+  * @param text 描画するUTF-8テキスト
+  * @param ruby ルビテキスト
   * @param config テキスト描画設定
-  * @return 描画した文字列の幅
+  * @return 描画したテキストの幅
   */
  int epd_text_draw_ruby(EPDWrapper* wrapper, int x, int y, const char* text, const char* ruby, const EPDTextConfig* config);
  
  /**
   * @brief テキストの描画幅を計算する
-  * @param text 計算するUTF-8文字列
+  * @param text 計算するUTF-8テキスト
   * @param config テキスト描画設定
   * @return テキストの描画幅（ピクセル単位）
   */
@@ -155,32 +156,60 @@ int epd_text_draw_multiline(EPDWrapper* wrapper, int x, int y, EpdRect* rect, co
  
  /**
   * @brief テキストの描画高さを計算する
-  * @param text 計算するUTF-8文字列
+  * @param text 計算するUTF-8テキスト
   * @param config テキスト描画設定
   * @return テキストの描画高さ（ピクセル単位）
   */
  int epd_text_calc_height(const char* text, const EPDTextConfig* config);
  
  /**
-  * @brief フォントからコードポイントに対応する文字情報を検索する
-  * @param font フォント情報
+  * @brief 指定したコードポイントの文字情報を検索する
+  * @param font 検索対象のフォント情報
   * @param code_point 検索するUnicodeコードポイント
-  * @return 該当する文字情報のポインタ。見つからない場合はNULL
+  * @return 見つかった文字情報、見つからない場合はNULL
   */
  const FontCharInfo* epd_text_find_char(const FontInfo* font, uint32_t code_point);
  
  /**
-  * @brief UTF-8テキストから次の文字のUnicodeコードポイントを取得する
-  * @param text UTF-8テキストへのポインタのポインタ（処理後、ポインタは次の文字位置に進む）
-  * @return 次の文字のUnicodeコードポイント。文字列終端の場合は0
+  * @brief UTF-8テキストから次の文字を取得する
+  * @param text UTF-8テキストへのポインタのポインタ（更新される）
+  * @return 読み取った文字のUnicodeコードポイント
   */
  uint32_t epd_text_utf8_next_char(const char** text);
  
  /**
-  * @brief 文字が日本語/中国語/韓国語かどうかを判定する
-  * @param code_point Unicodeコードポイント
-  * @return CJK文字ならtrue、それ以外ならfalse
+  * @brief 文字が縦書き時に回転が必要かどうかを判定する
+  * @param font_char 文字情報
+  * @return 回転が必要な場合はtrue
   */
- bool epd_text_is_cjk(uint32_t code_point);
+ bool epd_text_needs_rotation(const FontCharInfo* font_char);
  
- #endif // EPD_TEXT_H
+ /**
+  * @brief 文字が行頭禁則文字かどうかを判定する
+  * @param font_char 文字情報
+  * @return 行頭禁則文字の場合はtrue
+  */
+ bool epd_text_is_no_start_char(const FontCharInfo* font_char);
+ 
+ /**
+  * @brief 文字が行末禁則文字かどうかを判定する
+  * @param font_char 文字情報
+  * @return 行末禁則文字の場合はtrue
+  */
+ bool epd_text_is_no_end_char(const FontCharInfo* font_char);
+ 
+ /**
+  * @brief 文字が半角幅かどうかを判定する
+  * @param font_char 文字情報
+  * @return 半角文字の場合はtrue
+  */
+ bool epd_text_is_halfwidth(const FontCharInfo* font_char);
+ 
+ /**
+  * @brief 文字が全角幅かどうかを判定する
+  * @param font_char 文字情報
+  * @return 全角文字の場合はtrue
+  */
+ bool epd_text_is_fullwidth(const FontCharInfo* font_char);
+ 
+ #endif /* EPD_TEXT_H */
