@@ -1,3 +1,6 @@
+# 複数サイズを一度に生成
+# python f2d.py Mplus2-Light.ttf --fallback-font mgenplus-1m-light.ttf --charset Mplus2-Light_chars_griflist.txt --multiple-sizes 12,16,24,32
+
 import os
 import re
 import argparse
@@ -63,8 +66,8 @@ def get_char_typography_info(char):
             result['rotation_angle'] = 90
     
     # 禁則文字判定
-    no_break_start_chars = ',.!?)]｝、。，．・：；？！゛゜ヽヾゝゞ々ー」』】〕〉》）］｝〟"' "' _ ‐ ー ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ'
-    no_break_end_chars = '([｛「『【〔〈《（［｛〝"' "'
+    no_break_start_chars = ',.!?)]｝、。，．・：；？！゛゜ヽヾゝゞ々ー」』】〕〉》）］｝〟\'"_ ‐ ー ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ'
+    no_break_end_chars = '([｛「『【〔〈《（［｛〝\'"'
     
     result['is_no_break_start'] = char in no_break_start_chars
     result['is_no_break_end'] = char in no_break_end_chars

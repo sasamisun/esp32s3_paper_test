@@ -457,6 +457,7 @@ void test_multiline_text(EPDWrapper* wrapper) {
     text_config.text_color = 0x00;  // 黒
     text_config.char_spacing = 2;   // 文字間隔
     text_config.line_spacing = 5;   // 行間
+    text_config.box_padding = 5;   // 内側余白
     
     const char* long_text = 
         "これは複数行テキスト表示です。「禁則処理」も考慮されます。\n"
@@ -464,7 +465,7 @@ void test_multiline_text(EPDWrapper* wrapper) {
         "長～い行は自動的に折り返されて、矩形領域内に収まるように表示されます。"
         "句読点（、。）やカッコ「」などは行頭・行末禁則処理の対象です。";
     
-    int lines = epd_text_draw_multiline(wrapper, rect1.x + 10, rect1.y + 10, &rect1, long_text, &text_config);
+    int lines = epd_text_draw_multiline(wrapper, &rect1, long_text, &text_config);
     ESP_LOGI(TAG, "Drew horizontal multiline text with %d lines", lines);
     
     // 矩形領域の定義 - 右側の領域
@@ -487,7 +488,7 @@ void test_multiline_text(EPDWrapper* wrapper) {
         "改行も正しく処理されます。\n"
         "長い行は自動的に折り返されて、矩形領域内に収まるように表示されます。";
     
-    lines = epd_text_draw_multiline(wrapper, rect2.x + 120, rect2.y + 10, &rect2, vertical_text, &text_config);
+    lines = epd_text_draw_multiline(wrapper, &rect2, vertical_text, &text_config);
     ESP_LOGI(TAG, "Drew vertical multiline text with %d lines", lines);
     
     // 矩形領域の定義 - 下部の領域
@@ -511,7 +512,7 @@ void test_multiline_text(EPDWrapper* wrapper) {
         "このテキストも、複数行で表示され矩形範囲内に収まります。\n"
         "This is white text.";
     
-    lines = epd_text_draw_multiline(wrapper, rect3.x + 10, rect3.y + 10, &rect3, white_text, &text_config);
+    lines = epd_text_draw_multiline(wrapper, &rect3, white_text, &text_config);
     ESP_LOGI(TAG, "Drew white multiline text with %d lines", lines);
     
     // 画面を更新

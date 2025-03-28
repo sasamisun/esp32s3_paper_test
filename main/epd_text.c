@@ -327,13 +327,8 @@ int epd_text_draw_char(EPDWrapper *wrapper, int x, int y, uint32_t code_point, c
             if (pixel_is_set)
             {
                 epd_draw_pixel(x + dx, y + dy, draw_color, wrapper->framebuffer);
-                //ESP_LOGI(TAG, "*");
-            }else{
-                //ESP_LOGI(TAG, "_");
             }
         }
-        
-        //ESP_LOGI(TAG, "##############");
     }
 
     if (config->vertical)
@@ -593,7 +588,7 @@ int epd_text_calc_height(const char *text, const EPDTextConfig *config)
  * @param config テキスト描画設定
  * @return 描画した行数
  */
-int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, const char *text, const EPDTextConfig *config)
+int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text, const EPDTextConfig *config)
 {
     if (wrapper == NULL || config == NULL || config->font == NULL || text == NULL || rect == NULL)
     {
@@ -613,8 +608,11 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
              local_config.vertical ? "Vertical" : "Horizontal", local_config.wrap_width);
 
     // 現在の描画位置
-    int current_x = x;
-    int current_y = y;
+    int current_x = rect->x + config->box_padding;
+    int current_y = rect->y + config->box_padding;
+
+    // 縦書きの場合は描画開始位置は右上-一行幅
+    if (local_config.vertical) current_x = rect->x + rect->width - config->box_padding;
 
     // 行の高さ（横書き）または幅（縦書き）
     int line_size = local_config.vertical ? local_config.font->max_height : local_config.font->max_height + local_config.line_spacing;
@@ -641,25 +639,26 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
     while (token != NULL && line_count < max_lines)
     {
         // この行の文字列を処理
-        int token_length = strlen(token);
+        //int token_length = strlen(token);
 
         // 描画すべき部分文字列のリスト
         const char *segments[100]; // 十分な大きさの配列
         int segment_count = 0;
 
         // 縦書きモードの場合、単純に文字列を描画
-        if (local_config.vertical)
+        /*if (local_config.vertical)
         {
             segments[0] = token;
             segment_count = 1;
         }
         else
-        {
-            // 横書きモードの場合、折り返し処理が必要
-            const char *line_start = token;
+        {*/
+            // 折り返し処理用
+            //const char *line_start = token;
             const char *current = token;
             const char *segment_start = token;
             int segment_width = 0;
+            int segment_height = 0;
             uint32_t last_code_point = 0;
             bool pending_wrap = false;
             
@@ -678,22 +677,37 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
                     continue; // 文字が見つからない場合はスキップ
                 }
 
-                // この文字を追加した場合の幅を計算
-                int new_width = segment_width + char_info->width;
+                // この文字を追加した場合の幅を計算（横書き用）
+                int new_width = segment_width + char_info->img_width;
                 if (segment_width > 0)
                 {
                     new_width += local_config.char_spacing;
                 }
+                
+                // この文字を追加した場合の高さを計算（縦書き用）
+                int new_height = segment_height + char_info->img_height;
+                if (segment_height > 0)
+                {
+                    new_height += local_config.char_spacing;
+                }
+
+                //幅、高さが制限を超えているかチェック
+                bool size_limit;
+                if (local_config.vertical){
+                    size_limit = new_height > local_config.wrap_width;
+                }else{
+                    size_limit = new_width > local_config.wrap_width;
+                }
 
                 // 幅が制限を超える場合、または前の処理で折り返しが保留になっていた場合の処理
-                if (new_width > local_config.wrap_width || pending_wrap)
+                if (size_limit || pending_wrap)
                 {
                     pending_wrap = false;
                     
-                    // 行頭禁止文字の場合
+                    // 表示しようとしている文字が行頭禁止文字の場合
                     if (epd_text_is_no_start_char(code_point))
                     {
-                        // 前の文字で折り返す
+                        // 前の文字の表示前で折り返す
                         if (prev_char_start != NULL && segment_start < prev_char_start)
                         {
                             // 現在のセグメントを前の文字までとして追加
@@ -704,15 +718,18 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
                             
                             // 前の文字と現在の文字の幅を計算
                             const FontCharInfo *prev_char_info = epd_text_find_char(local_config.font, last_code_point);
-                            segment_width = (prev_char_info != NULL ? prev_char_info->width : 0) + 
-                                           local_config.char_spacing + char_info->width;
+                            segment_width = (prev_char_info != NULL ? prev_char_info->img_width : 0) + 
+                                           local_config.char_spacing + char_info->img_width;
+                            segment_height = (prev_char_info != NULL ? prev_char_info->img_height : 0) + 
+                                            local_config.char_spacing + char_info->img_height;
                         }
                         else
                         {
                             // 前の文字がない場合は通常の折り返し
                             segments[segment_count++] = segment_start;
                             segment_start = char_start;
-                            segment_width = char_info->width;
+                            segment_width = char_info->img_width;
+                            segment_height = char_info->img_height;
                         }
                     }
                     // 行末禁止文字だった場合
@@ -729,15 +746,18 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
                             
                             // 行末禁止文字と現在の文字の幅を計算
                             const FontCharInfo *prev_char_info = epd_text_find_char(local_config.font, last_code_point);
-                            segment_width = (prev_char_info != NULL ? prev_char_info->width : 0) + 
-                                           local_config.char_spacing + char_info->width;
+                            segment_width = (prev_char_info != NULL ? prev_char_info->img_width : 0) + 
+                                           local_config.char_spacing + char_info->img_width;
+                            segment_height = (prev_char_info != NULL ? prev_char_info->img_height : 0) + 
+                                            local_config.char_spacing + char_info->img_height;
                         }
                         else
                         {
                             // 通常の折り返し（最初の文字が行末禁止文字の場合）
                             segments[segment_count++] = segment_start;
                             segment_start = char_start;
-                            segment_width = char_info->width;
+                            segment_width = char_info->img_width;
+                            segment_height = char_info->img_height;
                         }
                     }
                     else
@@ -745,7 +765,8 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
                         // 通常の折り返し
                         segments[segment_count++] = segment_start;
                         segment_start = char_start;
-                        segment_width = char_info->width;
+                        segment_width = char_info->img_width;
+                        segment_height = char_info->img_height;
                     }
                 }
                 else
@@ -765,9 +786,11 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
                             if (next_char_info != NULL)
                             {
                                 // 次の文字を追加した場合の幅を計算
-                                int next_width = new_width + next_char_info->width + local_config.char_spacing;
+                                int next_width = new_width + next_char_info->img_width + local_config.char_spacing;
+                                // 次の文字を追加した場合の高さも計算
+                                int next_height = new_height + next_char_info->img_height + local_config.char_spacing;
                                 
-                                if (next_width > local_config.wrap_width)
+                                if (next_width > local_config.wrap_width || next_height > local_config.wrap_width)
                                 {
                                     // 行頭禁止文字が次の行に来てしまう場合、現在の文字でも折り返す
                                     pending_wrap = true;
@@ -776,8 +799,9 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
                         }
                     }
                     
-                    // 幅が制限内の場合、幅を更新
+                    // 幅が制限内の場合、幅と高さを更新
                     segment_width = new_width;
+                    segment_height = new_height;
                 }
 
                 // 前の文字の位置を記録
@@ -790,7 +814,7 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
             {
                 segments[segment_count++] = segment_start;
             }
-        }
+        //}
 
         // 各セグメントを描画
         for (int i = 0; i < segment_count && line_count < max_lines; i++)
@@ -812,7 +836,7 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
             // 描画領域を超えていないか確認
             if (local_config.vertical)
             {
-                if (current_x + line_size > rect->x + rect->width)
+                if (current_x - line_size > rect->x + rect->width + config->box_padding)
                 {
                     free(segment_str);
                     break;
@@ -820,7 +844,7 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
             }
             else
             {
-                if (current_y + line_size > rect->y + rect->height)
+                if (current_y + line_size > rect->y + rect->height - config->box_padding)
                 {
                     free(segment_str);
                     break;
@@ -831,7 +855,7 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, int x, int y, EpdRect *rect, co
             if (local_config.vertical)
             {
                 epd_text_draw_string(wrapper, current_x, current_y, segment_str, &local_config);
-                current_x += line_size; // 次の行（縦書きでは右に移動）
+                current_x -= line_size; // 次の行（縦書きでは左に移動）
             }
             else
             {
