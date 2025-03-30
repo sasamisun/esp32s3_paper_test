@@ -126,17 +126,17 @@
  
 /**
  * @brief 文字が行頭禁止文字かどうかを判定する
- * @param code_point 判定するUnicodeコードポイント
+ * @param font_char 判定するフォント情報
  * @return 行頭禁止文字の場合はtrue、それ以外はfalse
  */
-bool epd_text_is_no_start_char(uint32_t code_point);
+bool epd_text_is_no_start_char(const FontCharInfo* font_char);
 
 /**
  * @brief 文字が行末禁止文字かどうかを判定する
- * @param code_point 判定するUnicodeコードポイント
+ * @param font_char 判定するフォント情報
  * @return 行末禁止文字の場合はtrue、それ以外はfalse
  */
-bool epd_text_is_no_end_char(uint32_t code_point);
+bool epd_text_is_no_end_char(const FontCharInfo* font_char);
 
 /**
  * @brief 複数行のテキストを描画する
@@ -192,12 +192,5 @@ int epd_text_draw_multiline(EPDWrapper* wrapper, EpdRect* rect, const char* text
   * @return 次の文字のUnicodeコードポイント。文字列終端の場合は0
   */
  uint32_t epd_text_utf8_next_char(const char** text);
- 
- /**
-  * @brief 文字が日本語/中国語/韓国語かどうかを判定する
-  * @param code_point Unicodeコードポイント
-  * @return CJK文字ならtrue、それ以外ならfalse
-  */
- bool epd_text_is_cjk(uint32_t code_point);
  
  #endif // EPD_TEXT_H

@@ -16,6 +16,9 @@
 
 static const char *TAG = "epd_text";
 
+FontCharInfo harf_sp = { 0x0020, 3, 0U, 7, 16, 0U, 0, 0, 0 };
+FontCharInfo full_sp = { 0x3000, 3, 0U, 7, 16, 0U, 0, 0, 0 };
+
 // 行頭禁止文字（句読点や閉じ括弧など）
 const uint32_t EPD_TEXT_NO_START_CHARS[] = {
     0x3001, // 、
@@ -123,6 +126,20 @@ const FontCharInfo *epd_text_find_char(const FontInfo *font, uint32_t code_point
     {
         return NULL;
     }
+    // 半角スペース
+    if(code_point == 0x0020){
+        harf_sp.width = font->size / 2;
+        harf_sp.img_height = font->size;
+        harf_sp.img_width = font->size / 2;
+        return &harf_sp;
+    }
+    // 全角スペース
+    if(code_point == 0x3000){
+        full_sp.width = font->size;
+        full_sp.img_height = font->size;
+        full_sp.img_width = font->size;
+        return &full_sp;
+    }
 
     // バイナリサーチでコードポイントを検索
     int left = 0;
@@ -220,58 +237,90 @@ uint32_t epd_text_utf8_next_char(const char **text)
 }
 
 /**
- * @brief 文字が日本語/中国語/韓国語かどうかを判定する
- * @param code_point Unicodeコードポイント
- * @return CJK文字ならtrue、それ以外ならfalse
+ * @brief 回転を考慮して文字を描画する
+ * @param wrapper EPDラッパー構造体へのポインタ
+ * @param x 描画開始X座標
+ * @param y 描画開始Y座標
+ * @param char_info 描画する文字情報
+ * @param bitmap ビットマップデータ
+ * @param rotation 回転角度（0:0度, 1:90度, 2:180度, 3:270度）
+ * @param text_color 文字色
+ * @param bg_color 背景色
+ * @param bg_transparent 背景透過フラグ
  */
-bool epd_text_is_cjk(uint32_t code_point)
+void draw_rotated_char(EPDWrapper *wrapper, int x, int y,
+                       const FontCharInfo *char_info, const uint8_t *bitmap,
+                       int rotation, uint8_t text_color, uint8_t bg_color,
+                       bool bg_transparent)
 {
-    // 基本的なCJK範囲の確認
-    // 日本語、中国語、韓国語の主要な文字範囲をチェック
+    // スペースの場合はスキップ
+    if(char_info->code_point == 0x0020 || char_info->code_point == 0x3000) return;
+    
+    int width = char_info->img_width;
+    int height = char_info->img_height;
 
-    // CJKユニファイド漢字
-    if ((code_point >= 0x4E00 && code_point <= 0x9FFF) ||   // CJK統合漢字
-        (code_point >= 0x3400 && code_point <= 0x4DBF) ||   // CJK統合漢字拡張A
-        (code_point >= 0x20000 && code_point <= 0x2A6DF) || // CJK統合漢字拡張B
-        (code_point >= 0x2A700 && code_point <= 0x2B73F) || // CJK統合漢字拡張C
-        (code_point >= 0x2B740 && code_point <= 0x2B81F) || // CJK統合漢字拡張D
-        (code_point >= 0x2B820 && code_point <= 0x2CEAF) || // CJK統合漢字拡張E
-        (code_point >= 0x2CEB0 && code_point <= 0x2EBEF) || // CJK統合漢字拡張F
-        (code_point >= 0x30000 && code_point <= 0x3134F) || // CJK統合漢字拡張G
-        (code_point >= 0xF900 && code_point <= 0xFAFF) ||   // CJK互換漢字
-        (code_point >= 0x2F800 && code_point <= 0x2FA1F))
-    { // CJK互換漢字補助
-        return true;
+    // ビットマップデータをバイト単位でアクセスするための計算
+    int bytes_per_row = (width + 7) / 8; // 8ビット境界に切り上げ
+
+    // 各ピクセルを描画
+    for (int dy = 0; dy < height; dy++)
+    {
+        for (int dx = 0; dx < width; dx++)
+        {
+            // ビットマップデータの位置を計算
+            int byte_index = (dy * bytes_per_row) + (dx / 8);
+            int bit_index = 7 - (dx % 8); // MSBファースト
+
+            // ビットが立っているかチェック
+            bool pixel_is_set = (bitmap[byte_index] & (1 << bit_index)) != 0;
+
+            // 描画先の座標を回転に応じて計算
+            int draw_x, draw_y;
+
+            switch (rotation)
+            {
+            case 0: // 0度回転（そのまま）
+                draw_x = x + dx;
+                draw_y = y + dy;
+                break;
+
+            case 1: // 90度回転（時計回り）
+                draw_x = x + height - 1 - dy;
+                draw_y = y + dx;
+                break;
+
+            case 2: // 180度回転
+                draw_x = x + width - 1 - dx;
+                draw_y = y + height - 1 - dy;
+                break;
+
+            case 3: // 270度回転（反時計回り）
+                draw_x = x + dy;
+                draw_y = y + width - 1 - dx;
+                break;
+
+            default:
+                // デフォルトは回転なし
+                draw_x = x + dx;
+                draw_y = y + dy;
+            }
+
+            // ピクセルを描画（文字の場合）またはクリア（背景の場合）
+            if (pixel_is_set)
+            {
+                epd_wrapper_draw_pixel(wrapper, draw_x, draw_y, text_color);
+            }
+            else if (!bg_transparent)
+            {
+                // 背景が透明でない場合のみ背景色を描画
+                epd_wrapper_draw_pixel(wrapper, draw_x, draw_y, bg_color);
+            }
+        }
     }
-
-    // 日本語特有
-    if ((code_point >= 0x3040 && code_point <= 0x309F) || // ひらがな
-        (code_point >= 0x30A0 && code_point <= 0x30FF) || // カタカナ
-        (code_point >= 0x31F0 && code_point <= 0x31FF))
-    { // カタカナ拡張
-        return true;
-    }
-
-    // 韓国語（ハングル）
-    if ((code_point >= 0xAC00 && code_point <= 0xD7AF) || // ハングル音節
-        (code_point >= 0x1100 && code_point <= 0x11FF) || // ハングル字母
-        (code_point >= 0x3130 && code_point <= 0x318F))
-    { // ハングル互換字母
-        return true;
-    }
-
-    // その他のCJK関連文字
-    if ((code_point >= 0x3000 && code_point <= 0x303F) || // CJK記号と句読点
-        (code_point >= 0xFF00 && code_point <= 0xFFEF))
-    { // 全角形と半角形
-        return true;
-    }
-
-    return false;
 }
 
 /**
- * @brief 単一の文字を描画する
+ * @brief 単一の文字を描画する（回転対応版）
  * @param wrapper EPDラッパー構造体へのポインタ
  * @param x X座標
  * @param y Y座標
@@ -283,7 +332,6 @@ int epd_text_draw_char(EPDWrapper *wrapper, int x, int y, uint32_t code_point, c
 {
     if (wrapper == NULL || config == NULL || config->font == NULL)
     {
-        ESP_LOGE(TAG, "Invalid parameters for drawing character");
         return 0;
     }
 
@@ -291,56 +339,69 @@ int epd_text_draw_char(EPDWrapper *wrapper, int x, int y, uint32_t code_point, c
     const FontCharInfo *char_info = epd_text_find_char(config->font, code_point);
     if (char_info == NULL)
     {
-        ESP_LOGW(TAG, "Character U+%04lX not found in font", code_point);
         return 0;
     }
 
-    // 文字色の決定（0x00または0xFFのみ対応）
-    uint8_t draw_color;
-    if (config->text_color == 0xFF)
+    // 文字色の決定
+    uint8_t draw_color = config->text_color;
+    uint8_t bg_color = config->bg_color;
+
+    // ベースライン調整
+    int y_pos = y;
+    if (config->use_baseline)
     {
-        draw_color = 0xFF; // 白
+        y_pos = y - config->font->baseline;
     }
-    else
+
+    // 位置オフセットの適用（タイポグラフィ情報が有効な場合）
+    if (config->use_typo_flags)
     {
-        draw_color = 0x00; // 黒
+        x += char_info->x_offset;
+        y_pos += char_info->y_offset;
     }
 
     // ビットマップデータの取得
     const uint8_t *bitmap = config->font->bitmap_data + char_info->data_offset;
 
-    ESP_LOGI(TAG, "Drawing character U+%04lX at (%d,%d)", code_point, x, y);
-    ESP_LOGI(TAG, "Character info - width: %d, img_width: %d, img_height: %d",
-             char_info->width, char_info->img_width, char_info->img_height);
-
-    // 文字の描画
-    for (int dy = 0; dy < char_info->img_height+4; dy++)
+    // 回転角度の決定
+    int rotation = 0;
+    if (config->vertical)
     {
-        for (int dx = 0; dx < char_info->img_width; dx++)
-        {
-            // ビットマップデータの位置を計算
-            int byte_index = (dy * ((char_info->img_width + 7) / 8)) + (dx / 8);
-            int bit_index = 7 - (dx % 8); // MSBファースト（左から右へ）
+                rotation = char_info->rotation;
+    }
 
-            // ビットが立っていれば描画（1=描画、0=透明）
-            bool pixel_is_set = (bitmap[byte_index] & (1 << bit_index)) != 0;
-            if (pixel_is_set)
-            {
-                epd_draw_pixel(x + dx, y + dy, draw_color, wrapper->framebuffer);
-            }
+    // 文字の描画（回転を考慮）
+    draw_rotated_char(
+        wrapper,
+        x,
+        y_pos,
+        char_info,
+        bitmap,
+        rotation,
+        draw_color,
+        bg_color,
+        config->bg_transparent);
+
+    // 下線の描画（横書きの場合のみ）
+    if (config->underline && !config->vertical)
+    {
+        // 回転角度によって下線の位置を調整
+        if (rotation == 0 || rotation == 2)
+        {
+            // 0度または180度の場合は通常の下線位置
+            int underline_y = y_pos + config->font->max_height + 2;
+            // 文字の幅だけ横線を引く
+            epd_wrapper_draw_line(wrapper, x, underline_y, x + char_info->width, underline_y, draw_color);
+        }
+        else
+        {
+            // 90度または270度回転時の下線（横に表示される文字に対して）
+            int underline_x = (rotation == 1) ? x - 2 : x + char_info->img_height + 2;
+            epd_wrapper_draw_line(wrapper, underline_x, y_pos, underline_x, y_pos + char_info->width, draw_color);
         }
     }
 
-    if (config->vertical)
-    {
-        // 縦書きの場合は高さを返す
-        return char_info->img_height;
-    }
-    else
-    {
-        // 描画した文字の幅を返す
-        return char_info->width;
-    }
+    return config->vertical ? char_info->img_height : char_info->width;
 }
 
 /**
@@ -411,20 +472,6 @@ int epd_text_draw_string(EPDWrapper *wrapper, int x, int y, const char *text, co
         // 文字を描画
         int advance = epd_text_draw_char(wrapper, current_x, current_y, code_point, config);
 
-        // 下線の描画（横書きの場合のみ）
-        if (config->underline && !config->vertical)
-        {
-            // 下線の位置（文字の下部から2ピクセル下）
-            int underline_y = current_y + config->font->max_height + 2;
-            // 文字の幅だけ横線を引く
-            epd_wrapper_draw_line(wrapper,
-                                  current_x,
-                                  underline_y,
-                                  current_x + char_info->width,
-                                  underline_y,
-                                  config->text_color == 0xFF ? 0xFF : 0x00);
-        }
-
         // 次の文字位置の計算（文字間隔を考慮）
         if (config->vertical)
         {
@@ -455,16 +502,9 @@ int epd_text_draw_string(EPDWrapper *wrapper, int x, int y, const char *text, co
  * @param code_point 判定するUnicodeコードポイント
  * @return 行頭禁止文字の場合はtrue、それ以外はfalse
  */
-bool epd_text_is_no_start_char(uint32_t code_point)
+bool epd_text_is_no_start_char(const FontCharInfo *font_char)
 {
-    for (int i = 0; i < EPD_TEXT_NO_START_CHARS_COUNT; i++)
-    {
-        if (code_point == EPD_TEXT_NO_START_CHARS[i])
-        {
-            return true;
-        }
-    }
-    return false;
+    return (font_char->typo_flags & TYPO_FLAG_NO_BREAK_START) != 0;
 }
 
 /**
@@ -472,16 +512,9 @@ bool epd_text_is_no_start_char(uint32_t code_point)
  * @param code_point 判定するUnicodeコードポイント
  * @return 行末禁止文字の場合はtrue、それ以外はfalse
  */
-bool epd_text_is_no_end_char(uint32_t code_point)
+bool epd_text_is_no_end_char(const FontCharInfo *font_char)
 {
-    for (int i = 0; i < EPD_TEXT_NO_END_CHARS_COUNT; i++)
-    {
-        if (code_point == EPD_TEXT_NO_END_CHARS[i])
-        {
-            return true;
-        }
-    }
-    return false;
+    return (font_char->typo_flags & TYPO_FLAG_NO_BREAK_END) != 0;
 }
 
 /**
@@ -600,7 +633,7 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
     EPDTextConfig local_config = *config;
 
     // 矩形領域の幅を折り返し幅として設定
-    local_config.wrap_width = rect->width;
+    local_config.wrap_width = local_config.vertical ? rect->height : rect->width;
 
     ESP_LOGI(TAG, "Drawing multiline text in rect: %d,%d [%dx%d]",
              rect->x, rect->y, rect->width, rect->height);
@@ -612,7 +645,8 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
     int current_y = rect->y + config->box_padding;
 
     // 縦書きの場合は描画開始位置は右上-一行幅
-    if (local_config.vertical) current_x = rect->x + rect->width - config->box_padding;
+    if (local_config.vertical)
+        current_x = rect->x + rect->width - config->box_padding - local_config.font->size;
 
     // 行の高さ（横書き）または幅（縦書き）
     int line_size = local_config.vertical ? local_config.font->max_height : local_config.font->max_height + local_config.line_spacing;
@@ -639,7 +673,7 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
     while (token != NULL && line_count < max_lines)
     {
         // この行の文字列を処理
-        //int token_length = strlen(token);
+        // int token_length = strlen(token);
 
         // 描画すべき部分文字列のリスト
         const char *segments[100]; // 十分な大きさの配列
@@ -653,116 +687,117 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
         }
         else
         {*/
-            // 折り返し処理用
-            //const char *line_start = token;
-            const char *current = token;
-            const char *segment_start = token;
-            int segment_width = 0;
-            int segment_height = 0;
-            uint32_t last_code_point = 0;
-            bool pending_wrap = false;
-            
-            // 前の文字を保存するためのバッファ
-            const char* prev_char_start = NULL;
+        // 折り返し処理用
+        // const char *line_start = token;
+        const char *current = token;
+        const char *segment_start = token;
+        int segment_width = 0;
+        int segment_height = 0;
+        uint32_t last_code_point = 0;
+        bool pending_wrap = false;
 
-            while (*current != '\0')
+        // 前の文字を保存するためのバッファ
+        const char *prev_char_start = NULL;
+
+        while (*current != '\0')
+        {
+            const char *char_start = current;
+            uint32_t code_point = epd_text_utf8_next_char(&current);
+
+            // 文字情報を取得
+            const FontCharInfo *char_info = epd_text_find_char(local_config.font, code_point);
+            if (char_info == NULL)
             {
-                const char *char_start = current;
-                uint32_t code_point = epd_text_utf8_next_char(&current);
+                continue; // 文字が見つからない場合はスキップ
+            }
+            // 前回の文字情報
+            const FontCharInfo *prev_char_info;
+            if (last_code_point != 0)
+            {
+                prev_char_info = epd_text_find_char(local_config.font, last_code_point);
+            }
 
-                // 文字情報を取得
-                const FontCharInfo *char_info = epd_text_find_char(local_config.font, code_point);
-                if (char_info == NULL)
-                {
-                    continue; // 文字が見つからない場合はスキップ
-                }
+            // この文字を追加した場合の幅を計算（横書き用）
+            int new_width = segment_width + local_config.font->size;
+            if (segment_width > 0)
+            {
+                new_width += local_config.char_spacing;
+            }
 
-                // この文字を追加した場合の幅を計算（横書き用）
-                int new_width = segment_width + char_info->img_width;
-                if (segment_width > 0)
-                {
-                    new_width += local_config.char_spacing;
-                }
-                
-                // この文字を追加した場合の高さを計算（縦書き用）
-                int new_height = segment_height + char_info->img_height;
-                if (segment_height > 0)
-                {
-                    new_height += local_config.char_spacing;
-                }
+            // この文字を追加した場合の高さを計算（縦書き用）
+            int new_height = segment_height + char_info->img_height;
+            if (segment_height > 0)
+            {
+                new_height += local_config.char_spacing;
+            }
 
-                //幅、高さが制限を超えているかチェック
-                bool size_limit;
-                if (local_config.vertical){
-                    size_limit = new_height > local_config.wrap_width;
-                }else{
-                    size_limit = new_width > local_config.wrap_width;
-                }
+            // 幅、高さが制限を超えているかチェック
+            bool size_limit; // = (local_config.vertical ? new_height : new_width ) > local_config.wrap_width - local_config.box_padding;
 
-                // 幅が制限を超える場合、または前の処理で折り返しが保留になっていた場合の処理
-                if (size_limit || pending_wrap)
+            if (local_config.vertical)
+            {
+                size_limit = new_height > local_config.wrap_width - (local_config.box_padding * 2);
+            }
+            else
+            {
+                size_limit = new_width > local_config.wrap_width - (local_config.box_padding * 2);
+            }
+
+            // 幅が制限を超える場合、または前の処理で折り返しが保留になっていた場合の処理
+            if (size_limit || pending_wrap)
+            {
+                ESP_LOGI(TAG, "---------------size limit oVer!! wrap_max = %d", local_config.wrap_width);
+                pending_wrap = false;
+
+                // 表示しようとしている文字が行頭禁止文字の場合
+                if (epd_text_is_no_start_char(char_info))
                 {
-                    pending_wrap = false;
-                    
-                    // 表示しようとしている文字が行頭禁止文字の場合
-                    if (epd_text_is_no_start_char(code_point))
+                    // 前の文字の表示前で折り返す
+                    if (prev_char_start != NULL && segment_start < prev_char_start)
                     {
-                        // 前の文字の表示前で折り返す
-                        if (prev_char_start != NULL && segment_start < prev_char_start)
-                        {
-                            // 現在のセグメントを前の文字までとして追加
-                            segments[segment_count++] = segment_start;
-                            
-                            // 前の文字から始まる新しいセグメントを開始
-                            segment_start = prev_char_start;
-                            
-                            // 前の文字と現在の文字の幅を計算
-                            const FontCharInfo *prev_char_info = epd_text_find_char(local_config.font, last_code_point);
-                            segment_width = (prev_char_info != NULL ? prev_char_info->img_width : 0) + 
-                                           local_config.char_spacing + char_info->img_width;
-                            segment_height = (prev_char_info != NULL ? prev_char_info->img_height : 0) + 
-                                            local_config.char_spacing + char_info->img_height;
-                        }
-                        else
-                        {
-                            // 前の文字がない場合は通常の折り返し
-                            segments[segment_count++] = segment_start;
-                            segment_start = char_start;
-                            segment_width = char_info->img_width;
-                            segment_height = char_info->img_height;
-                        }
-                    }
-                    // 行末禁止文字だった場合
-                    else if (epd_text_is_no_end_char(last_code_point))
-                    {
-                        // 行末禁止文字と現在の文字を次の行に送る
-                        if (prev_char_start != NULL && segment_start < prev_char_start)
-                        {
-                            // 直前の行末禁止文字の前までをセグメントとして追加
-                            segments[segment_count++] = segment_start;
-                            
-                            // 行末禁止文字から新しいセグメントを開始
-                            segment_start = prev_char_start;
-                            
-                            // 行末禁止文字と現在の文字の幅を計算
-                            const FontCharInfo *prev_char_info = epd_text_find_char(local_config.font, last_code_point);
-                            segment_width = (prev_char_info != NULL ? prev_char_info->img_width : 0) + 
-                                           local_config.char_spacing + char_info->img_width;
-                            segment_height = (prev_char_info != NULL ? prev_char_info->img_height : 0) + 
-                                            local_config.char_spacing + char_info->img_height;
-                        }
-                        else
-                        {
-                            // 通常の折り返し（最初の文字が行末禁止文字の場合）
-                            segments[segment_count++] = segment_start;
-                            segment_start = char_start;
-                            segment_width = char_info->img_width;
-                            segment_height = char_info->img_height;
-                        }
+                        // 現在のセグメントを前の文字までとして追加
+                        segments[segment_count++] = segment_start;
+
+                        // 前の文字から始まる新しいセグメントを開始
+                        segment_start = prev_char_start;
+
+                        // 前の文字と現在の文字の幅を計算
+                        segment_width = (prev_char_info != NULL ? prev_char_info->img_width : 0) +
+                                        local_config.char_spacing + char_info->img_width;
+                        segment_height = (prev_char_info != NULL ? prev_char_info->img_height : 0) +
+                                         local_config.char_spacing + char_info->img_height;
                     }
                     else
                     {
-                        // 通常の折り返し
+                        // 前の文字がない場合は通常の折り返し
+                        segments[segment_count++] = segment_start;
+                        segment_start = char_start;
+                        segment_width = char_info->img_width;
+                        segment_height = char_info->img_height;
+                    }
+                }
+                // 行末禁止文字だった場合
+                else if (epd_text_is_no_end_char(prev_char_info))
+                {
+                    // 行末禁止文字と現在の文字を次の行に送る
+                    if (prev_char_start != NULL && segment_start < prev_char_start)
+                    {
+                        // 直前の行末禁止文字の前までをセグメントとして追加
+                        segments[segment_count++] = segment_start;
+
+                        // 行末禁止文字から新しいセグメントを開始
+                        segment_start = prev_char_start;
+
+                        // 行末禁止文字と現在の文字の幅を計算
+                        const FontCharInfo *prev_char_info = epd_text_find_char(local_config.font, last_code_point);
+                        segment_width = (prev_char_info != NULL ? prev_char_info->img_width : 0) +
+                                        local_config.char_spacing + char_info->img_width;
+                        segment_height = (prev_char_info != NULL ? prev_char_info->img_height : 0) +
+                                         local_config.char_spacing + char_info->img_height;
+                    }
+                    else
+                    {
+                        // 通常の折り返し（最初の文字が行末禁止文字の場合）
                         segments[segment_count++] = segment_start;
                         segment_start = char_start;
                         segment_width = char_info->img_width;
@@ -771,49 +806,61 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
                 }
                 else
                 {
-                    // 次の文字を見て、それが行頭禁止文字かつ現在の行に収まらない場合、
-                    // 現在の文字で折り返しを保留
-                    const char *next_char_start = current;
-                    if (*next_char_start != '\0')
+                    // 通常の折り返し
+                    segments[segment_count++] = segment_start;
+                    segment_start = char_start;
+                    segment_width = char_info->img_width;
+                    segment_height = char_info->img_height;
+                }
+            }
+            else
+            {
+                /*
+                // 次の文字を見て、それが行頭禁止文字かつ現在の行に収まらない場合、
+                // 現在の文字で折り返しを保留
+                const char *next_char_start = current;
+                if (*next_char_start != '\0')
+                {
+                    const char *next_current = next_char_start;
+                    uint32_t next_code_point = epd_text_utf8_next_char(&next_current);
+
+                    if (epd_text_is_no_start_char(next_code_point))
                     {
-                        const char *next_current = next_char_start;
-                        uint32_t next_code_point = epd_text_utf8_next_char(&next_current);
-                        
-                        if (epd_text_is_no_start_char(next_code_point))
+                        // 次の文字の情報を取得
+                        const FontCharInfo *next_char_info = epd_text_find_char(local_config.font, next_code_point);
+                        if (next_char_info != NULL)
                         {
-                            // 次の文字の情報を取得
-                            const FontCharInfo *next_char_info = epd_text_find_char(local_config.font, next_code_point);
-                            if (next_char_info != NULL)
+                            // 次の文字を追加した場合の幅を計算
+                            int next_width = new_width + next_char_info->img_width + local_config.char_spacing;
+                            // 次の文字を追加した場合の高さも計算
+                            int next_height = new_height + next_char_info->img_height + local_config.char_spacing;
+
+                            if (next_width > local_config.wrap_width || next_height > local_config.wrap_width)
                             {
-                                // 次の文字を追加した場合の幅を計算
-                                int next_width = new_width + next_char_info->img_width + local_config.char_spacing;
-                                // 次の文字を追加した場合の高さも計算
-                                int next_height = new_height + next_char_info->img_height + local_config.char_spacing;
-                                
-                                if (next_width > local_config.wrap_width || next_height > local_config.wrap_width)
-                                {
-                                    // 行頭禁止文字が次の行に来てしまう場合、現在の文字でも折り返す
-                                    pending_wrap = true;
-                                }
+                                // 行頭禁止文字が次の行に来てしまう場合、現在の文字でも折り返す
+                                pending_wrap = true;
                             }
                         }
                     }
-                    
-                    // 幅が制限内の場合、幅と高さを更新
-                    segment_width = new_width;
-                    segment_height = new_height;
                 }
-
-                // 前の文字の位置を記録
-                prev_char_start = char_start;
-                last_code_point = code_point;
+                */
+                // 幅が制限内の場合、幅と高さを更新
+                segment_width = new_width;
+                segment_height = new_height;
             }
 
-            // 最後のセグメントを追加
-            if (*segment_start != '\0')
-            {
-                segments[segment_count++] = segment_start;
-            }
+            // 前の文字の位置を記録
+            prev_char_start = char_start;
+            last_code_point = code_point;
+
+            //                ESP_LOGI(TAG, "---------------size now width:%d height:%d",new_width,new_height);
+        }
+
+        // 最後のセグメントを追加
+        if (*segment_start != '\0')
+        {
+            segments[segment_count++] = segment_start;
+        }
         //}
 
         // 各セグメントを描画

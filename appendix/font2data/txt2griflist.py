@@ -61,13 +61,13 @@ def save_sorted_chars(chars, output_filename):
         print(f"エラー: ファイル '{output_filename}' への書き込み中にエラーが発生しました: {e}")
         sys.exit(1)
 
-def find_missing_chars(main_chars, comp_chars, output_filename):
+def find_missing_chars(comp_chars, main_chars, output_filename):
     """
-    メインファイルにあり、比較ファイルにない文字を抽出する
+    比較ファイルにあり、メインファイルにない文字を抽出する
     
     Args:
-        main_chars: メインファイルの文字セット
-        comp_chars: 比較ファイルの文字セット
+        comp_chars: メインファイルの文字セット
+        main_chars: 比較ファイルの文字セット
         output_filename: 出力ファイル名
     """
     # メインにあって比較ファイルにない文字を抽出

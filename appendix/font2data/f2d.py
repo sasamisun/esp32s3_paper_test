@@ -1,5 +1,5 @@
 # 複数サイズを一度に生成
-# python f2d.py Mplus2-Light.ttf --fallback-font mgenplus-1m-light.ttf --charset Mplus2-Light_chars_griflist.txt --multiple-sizes 12,16,24,32
+# python f2d.py Mplus2-Light.ttf --fallback-font mgenplus-1m-light.ttf --charset joyo_joyogai_jinmei_griflist.txt --multiple-sizes 12,18,26,34
 
 import os
 import re
@@ -60,10 +60,16 @@ def get_char_typography_info(char):
         result['char_type'] = 'symbol'
         
         # 特定の記号は縦書きで回転
-        rotated_symbols = '()[]{}⟨⟩《》〈〉「」『』【】〔〕（）［］｛｝"\'\'\"'
+        rotated_symbols = '\u301C＝～―()[]{}⟨⟩《》〈〉「」『』【】〔〕（）［］｛｝"\'\'\"'
         if char in rotated_symbols:
             result['needs_rotation'] = True
             result['rotation_angle'] = 90
+
+        # 180度回転
+        rotated_symbols180 = '、。'
+        if char in rotated_symbols180:
+            result['needs_rotation'] = True
+            result['rotation_angle'] = 180
     
     # 禁則文字判定
     no_break_start_chars = ',.!?)]｝、。，．・：；？！゛゜ヽヾゝゞ々ー」』】〕〉》）］｝〟\'"_ ‐ ー ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ'
@@ -74,34 +80,57 @@ def get_char_typography_info(char):
     
     return result
 
-def optimize_char_width(img):
-    """文字の実際の幅を検出（余白を削除）"""
+def optimize_char_bounds(img):
+    """文字の境界を検出し、上下左右の余白を削除"""
     data = np.array(img)
     if data.size == 0:
-        return 0
-    # 非空白ピクセルがある列を検出
+        return 0, 0, 0, 0, 0, 0
+
+    # 非空白ピクセルがある行と列を検出
+    non_empty_rows = []
     non_empty_cols = []
+    
+    for y in range(data.shape[0]):
+        if np.any(data[y, :] == False):
+            non_empty_rows.append(y)
+    
     for x in range(data.shape[1]):
-        if np.any(data[:, x] < 255):
+        if np.any(data[:, x] == False):
             non_empty_cols.append(x)
     
-    if not non_empty_cols:
-        return 0
+    if not non_empty_rows or not non_empty_cols:
+        return 0, 0, 0, 0, 0, 0
     
-    # 最小と最大の非空白列を取得し、幅を計算
-    # 追加の余白を設けるために、右側にパディングを追加
+    # 境界を計算
+    min_row = min(non_empty_rows)
+    max_row = max(non_empty_rows)
     min_col = min(non_empty_cols)
     max_col = max(non_empty_cols)
-    padding = 2  # 右側に追加するパディング
     
-    return max_col - min_col + 1 + padding
+    #print(f'{non_empty_rows} - {non_empty_cols}')
+    # パディングを追加（実際の使用では微調整が必要かもしれません）
+    padding_right = 2  # 右側に追加するパディング
+    padding_bottom = 2  # 下側に追加するパディング
+    
+    # 文字の実際の幅と高さ
+    width = max_col - min_col + 1 + padding_right
+    height = max_row - min_row + 1 + padding_bottom
+    
+    # x_offsetとy_offsetは、削除された余白のサイズ
+    x_offset = min_col
+    y_offset = min_row
+    
+    # 削除された範囲（トリミング用）
+    crop_box = (min_col, min_row, max_col + 1 + padding_right, max_row + 1 + padding_bottom)
+    
+    return width, height, x_offset, y_offset, crop_box
 
 def load_charset_from_file(file_path):
     """ファイルから文字セットを読み込む"""
     with open(file_path, 'r', encoding='utf-8') as f:
         return f.read().strip()
 
-def create_char_bitmap(font, char, font_size, calculated_height, optimize_width=True, padding=4):
+def create_char_bitmap(font, char, font_size, calculated_height, optimize=False, padding=4):
     """文字のビットマップを作成する共通関数"""
     # スペース文字の特別処理
     if char == ' ':  # 半角スペース
@@ -113,7 +142,7 @@ def create_char_bitmap(font, char, font_size, calculated_height, optimize_width=
         # 空の画像を作成（すべて白）
         img = Image.new('1', (img_width, img_height), color=255)
         
-        return img, char_width, img_width, img_height
+        return img, char_width, img_width, img_height, 0, 0
         
     elif char == '\u3000':  # 全角スペース（U+3000）
         # 全角スペースは幅を指定サイズと同じに設定
@@ -124,7 +153,11 @@ def create_char_bitmap(font, char, font_size, calculated_height, optimize_width=
         # 空の画像を作成（すべて白）
         img = Image.new('1', (img_width, img_height), color=255)
         
-        return img, char_width, img_width, img_height
+        return img, char_width, img_width, img_height, 0, 0
+
+    elif char == '\uFF5E': #全角チルダのグリフが見当たらないので波ダッシュで代用
+        char = '\u301C'
+        print('全角チルダのグリフが見当たらないので波ダッシュで代用')
     
     # テキストのサイズを取得
     bbox = font.getbbox(char)
@@ -142,14 +175,23 @@ def create_char_bitmap(font, char, font_size, calculated_height, optimize_width=
     # 文字の左上を (padding/2, 0) から描画開始
     draw.text((padding // 2, 0), char, font=font, fill=0)
     
-    # 最適化された文字幅を取得
-    width = char_width
-    if optimize_width:
-        detected_width = optimize_char_width(img)
-        if detected_width > 0:
-            width = detected_width
+    # 最適化されたバウンディングボックスを取得
+    x_offset = 0
+    y_offset = 0
     
-    return img, width, img_width, img_height
+    if optimize:
+        # 最適化しない場合は元のサイズを使用
+        width = char_width
+    else:
+        width, height, x_offset, y_offset, crop_box = optimize_char_bounds(img)
+        if width > 0 and height > 0:
+            # 検出した範囲でトリミング
+            img = img.crop(crop_box)
+            char_width = width
+            img_width = img.width
+            img_height = img.height
+    
+    return img, char_width, img_width, img_height, x_offset, y_offset
 
 def generate_font_header(font_path, font_size, charset, output_file, fallback_font_path=None, optimize_width=True):
     """フォントデータをCヘッダファイルに変換"""
@@ -231,13 +273,13 @@ def generate_font_header(font_path, font_size, charset, output_file, fallback_fo
                 current_font = fallback_font
                 
             bbox = current_font.getbbox(char)
-            height = bbox[3] - bbox[1]
+            height = int((bbox[3] - bbox[1])*1.3)
             max_height = max(max_height, height)
         except:
             pass
     
     # 実際のフォント高さと最大文字高さの比較、適切な余裕を持たせる
-    calculated_height = min(actual_font_height, max_height + 2)
+    calculated_height = min(actual_font_height, max_height)
     
     print(f"最大文字高さ: {max_height}, 計算後の高さ: {calculated_height}")
     
@@ -278,8 +320,8 @@ def generate_font_header(font_path, font_size, charset, output_file, fallback_fo
             # 使用するフォントを選択
             current_font = font if not use_fallback else fallback_font
             
-            # 文字のビットマップを作成
-            img, width, img_width, img_height = create_char_bitmap(
+            # 文字のビットマップを作成 (x_offsetとy_offsetを取得)
+            img, width, img_width, img_height, x_offset, y_offset = create_char_bitmap(
                 current_font, char, font_size, calculated_height, optimize_width)
             
             # バイト境界に合わせたビットマップデータ作成
@@ -325,8 +367,8 @@ def generate_font_header(font_path, font_size, charset, output_file, fallback_fo
                 img_height,        # 画像高さ
                 typo_flags,        # タイポグラフィフラグ
                 rotation,          # 回転情報（0-3）
-                typo_info['x_offset'],  # X方向オフセット
-                typo_info['y_offset']   # Y方向オフセット
+                x_offset,          # X方向オフセット（余白部分）
+                y_offset           # Y方向オフセット（余白部分）
             ))
             
             if use_fallback:

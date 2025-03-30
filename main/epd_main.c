@@ -460,8 +460,8 @@ void test_multiline_text(EPDWrapper* wrapper) {
     text_config.box_padding = 5;   // 内側余白
     
     const char* long_text = 
-        "これは複数行テキスト表示です。「禁則処理」も考慮されます。\n"
-        "改行も正しく処理されて、なんと「折り返し」も自動的に行われます。\n"
+        "これは、複数行テキスト表示なんですよです。「禁則処理」も考慮されます。\n"
+        "改行も正しく処理されてなんとなんと「折返し」も自動的に行われます。\n"
         "長～い行は自動的に折り返されて、矩形領域内に収まるように表示されます。"
         "句読点（、。）やカッコ「」などは行頭・行末禁則処理の対象です。";
     
@@ -485,8 +485,8 @@ void test_multiline_text(EPDWrapper* wrapper) {
     
     const char* vertical_text = 
         "縦書きのテキスト表示テストです。\n"
-        "改行も正しく処理されます。\n"
-        "長い行は自動的に折り返されて、矩形領域内に収まるように表示されます。";
+        "「改行」　も正しく処理されます。\n"
+        "長～～い行は自動的に折り返されて、 矩★形☆領△域内†に収まるように表示されます！！";
     
     lines = epd_text_draw_multiline(wrapper, &rect2, vertical_text, &text_config);
     ESP_LOGI(TAG, "Drew vertical multiline text with %d lines", lines);
@@ -509,7 +509,7 @@ void test_multiline_text(EPDWrapper* wrapper) {
     
     const char* white_text = 
         "これは、白背景に白文字で表示するテストです。\n"
-        "このテキストも、複数行で表示され矩形範囲内に収まります。\n"
+        "テキストも複数行で表示され矩形範囲内に収まります。\n"
         "This is white text.";
     
     lines = epd_text_draw_multiline(wrapper, &rect3, white_text, &text_config);
