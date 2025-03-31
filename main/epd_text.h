@@ -28,7 +28,7 @@
   */
  typedef struct {
      uint32_t code_point;   // Unicode値（UTF-32）
-     uint8_t width;         // 文字幅（ピクセル単位）
+     // uint8_t width;         // 文字幅（ピクセル単位）
      uint32_t data_offset;  // ビットマップデータの開始位置
      uint8_t img_width;     // 画像全体の幅
      uint8_t img_height;    // 画像全体の高さ
@@ -43,6 +43,7 @@
   */
  typedef struct {
      uint8_t size;             // フォントの基本サイズ
+     uint8_t max_width;         // 最大の文字幅
      uint8_t max_height;       // 最大の文字高さ
      uint16_t baseline;        // ベースラインの位置（上からの距離）
      const char* style;        // フォントスタイル
@@ -92,6 +93,7 @@
      bool enable_kerning;       // カーニングを有効にするか
      bool use_baseline;         // ベースライン調整を使用するか
      bool use_typo_flags;       // タイポグラフィフラグを使用するか
+     bool mono_spacing;         // 等幅かプロポーショナルか
 
  } EPDTextConfig;
  
@@ -161,22 +163,6 @@ int epd_text_draw_multiline(EPDWrapper* wrapper, EpdRect* rect, const char* text
   * @return 描画した文字列の幅
   */
  int epd_text_draw_ruby(EPDWrapper* wrapper, int x, int y, const char* text, const char* ruby, const EPDTextConfig* config);
- 
- /**
-  * @brief テキストの描画幅を計算する
-  * @param text 計算するUTF-8文字列
-  * @param config テキスト描画設定
-  * @return テキストの描画幅（ピクセル単位）
-  */
- int epd_text_calc_width(const char* text, const EPDTextConfig* config);
- 
- /**
-  * @brief テキストの描画高さを計算する
-  * @param text 計算するUTF-8文字列
-  * @param config テキスト描画設定
-  * @return テキストの描画高さ（ピクセル単位）
-  */
- int epd_text_calc_height(const char* text, const EPDTextConfig* config);
  
  /**
   * @brief フォントからコードポイントに対応する文字情報を検索する

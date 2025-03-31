@@ -243,6 +243,7 @@ def generate_font_header(font_path, font_size, charset, output_file, fallback_fo
     
     # 各文字の最大高さを計算
     max_height = 0
+    max_width = 0
     for char in charset:
         try:
             # 主フォントで文字を確認
@@ -268,6 +269,7 @@ def generate_font_header(font_path, font_size, charset, output_file, fallback_fo
                 continue
                 
             # 高さを計算するフォントを選択
+            '''
             current_font = font
             if not char_exists and fallback_font:
                 current_font = fallback_font
@@ -275,13 +277,14 @@ def generate_font_header(font_path, font_size, charset, output_file, fallback_fo
             bbox = current_font.getbbox(char)
             height = int((bbox[3] - bbox[1])*1.3)
             max_height = max(max_height, height)
+            '''
         except:
             pass
     
     # 実際のフォント高さと最大文字高さの比較、適切な余裕を持たせる
-    calculated_height = min(actual_font_height, max_height)
+    #calculated_height = min(actual_font_height, max_height)
     
-    print(f"最大文字高さ: {max_height}, 計算後の高さ: {calculated_height}")
+    #print(f"最大文字高さ: {max_height}, 計算後の高さ: {calculated_height}")
     
     # 各文字をビットマップに変換
     for i, char in enumerate(charset):
@@ -322,8 +325,10 @@ def generate_font_header(font_path, font_size, charset, output_file, fallback_fo
             
             # 文字のビットマップを作成 (x_offsetとy_offsetを取得)
             img, width, img_width, img_height, x_offset, y_offset = create_char_bitmap(
-                current_font, char, font_size, calculated_height, optimize_width)
-            
+                current_font, char, font_size, actual_font_height, optimize_width)
+            max_width = max(max_width,img_width+x_offset)
+            max_height = max(max_height,img_height+y_offset)
+
             # バイト境界に合わせたビットマップデータ作成
             pixels = np.array(img)
             byte_width = (img_width + 7) // 8  # 8ビット境界に切り上げ
@@ -361,7 +366,7 @@ def generate_font_header(font_path, font_size, charset, output_file, fallback_fo
             # 文字情報を記録（拡張版）
             char_infos.append((
                 code_point,        # Unicode値
-                width,             # 文字幅
+                #width,             # 文字幅
                 data_offset,       # ビットマップデータのオフセット
                 img_width,         # 画像幅
                 img_height,        # 画像高さ
@@ -407,18 +412,20 @@ def generate_font_header(font_path, font_size, charset, output_file, fallback_fo
         f.write("#include \"epd_text.h\"  // フォント構造体の定義\n\n")
         
         # タイポグラフィフラグの定義
+        '''
         f.write("// タイポグラフィフラグの定義\n")
         f.write("#define TYPO_FLAG_NEEDS_ROTATION  0x01  // 縦書き時に回転が必要\n")
         f.write("#define TYPO_FLAG_HALFWIDTH       0x02  // 半角文字\n")
         f.write("#define TYPO_FLAG_FULLWIDTH       0x04  // 全角文字\n")
         f.write("#define TYPO_FLAG_NO_BREAK_START  0x08  // 行頭禁則文字\n")
-        f.write("#define TYPO_FLAG_NO_BREAK_END    0x10  // 行末禁則文字\n\n")
+        f.write("#define TYPO_FLAG_NO_BREAK_END    0x10  // 行末禁則文字\n\n")'
+        '''
         
         # 文字情報配列
         f.write(f"const FontCharInfo {chars_var_name}[] __attribute__((section(\".rodata.font\"))) = {{\n")
         for info in char_infos:
-            code_point, width, offset, img_width, img_height, typo_flags, rotation, x_offset, y_offset = info
-            f.write(f"    {{ 0x{code_point:04X}, {width}, {offset}U, {img_width}, {img_height}, ")
+            code_point, offset, img_width, img_height, typo_flags, rotation, x_offset, y_offset = info
+            f.write(f"    {{ 0x{code_point:04X}, {offset}U, {img_width}, {img_height}, ")
             f.write(f"{typo_flags}U, {rotation}, {x_offset}, {y_offset} }},\n")
         f.write("};\n\n")
         
@@ -433,7 +440,8 @@ def generate_font_header(font_path, font_size, charset, output_file, fallback_fo
         # フォント情報構造体
         f.write(f"const FontInfo {font_var_name} = {{\n")
         f.write(f"    .size = {font_size},\n")
-        f.write(f"    .max_height = {calculated_height},\n")
+        f.write(f"    .max_width = {max_width},\n")
+        f.write(f"    .max_height = {max_height},\n")
         f.write(f"    .baseline = {baseline},\n")
         f.write(f"    .style = \"{style}\",\n")
         f.write(f"    .chars_count = {len(char_infos)},\n")

@@ -16,58 +16,9 @@
 
 static const char *TAG = "epd_text";
 
-FontCharInfo harf_sp = { 0x0020, 3, 0U, 7, 16, 0U, 0, 0, 0 };
-FontCharInfo full_sp = { 0x3000, 3, 0U, 7, 16, 0U, 0, 0, 0 };
-
-// 行頭禁止文字（句読点や閉じ括弧など）
-const uint32_t EPD_TEXT_NO_START_CHARS[] = {
-    0x3001, // 、
-    0x3002, // 。
-    0xFF0C, // ，
-    0xFF0E, // ．
-    0xFF1A, // ：
-    0xFF1B, // ；
-    0xFF09, // ）
-    0x3009, // 〉
-    0x300B, // 》
-    0x300D, // 」
-    0x300F, // 』
-    0x3011, // 】
-    0xFF09, // ）
-    0xFF5D, // ｝
-    0xFF60, // ｠
-    0x3015, // 〕
-    0x2019, // '
-    0x201D, // "
-    0x3017, // 〗
-    0x3019, // 〙
-    0x301B, // 〛
-    0xFF3D, // ］
-    0xFF5D  // ｝
-};
-const int EPD_TEXT_NO_START_CHARS_COUNT = sizeof(EPD_TEXT_NO_START_CHARS) / sizeof(EPD_TEXT_NO_START_CHARS[0]);
-
-// 行末禁止文字（開き括弧など）
-const uint32_t EPD_TEXT_NO_END_CHARS[] = {
-    0xFF08, // （
-    0x3008, // 〈
-    0x300A, // 《
-    0x300C, // 「
-    0x300E, // 『
-    0x3010, // 【
-    0xFF08, // （
-    0xFF5B, // ｛
-    0xFF5F, // ｟
-    0x3014, // 〔
-    0x2018, // '
-    0x201C, // "
-    0x3016, // 〖
-    0x3018, // 〘
-    0x301A, // 〚
-    0xFF3B, // ［
-    0xFF5B  // ｛
-};
-const int EPD_TEXT_NO_END_CHARS_COUNT = sizeof(EPD_TEXT_NO_END_CHARS) / sizeof(EPD_TEXT_NO_END_CHARS[0]);
+// 全角・半角スペース用文字データ
+FontCharInfo harf_sp = {0x0020, 0U, 7, 16, 0U, 0, 0, 0};
+FontCharInfo full_sp = {0x3000, 0U, 7, 16, 0U, 0, 0, 0};
 
 /**
  * @brief テキスト描画設定を初期化する
@@ -108,8 +59,10 @@ void epd_text_config_init(EPDTextConfig *config, const FontInfo *font)
     config->ruby_offset = 2;     // デフォルトルビオフセット
 
     // その他の設定
+    config->box_padding = 0;        // デフォルトでパディング0
     config->wrap_width = 0;         // デフォルトで折り返しなし
     config->enable_kerning = false; // デフォルトでカーニング無効
+    config->mono_spacing = false;   // デフォルトでプロポーショナル
 
     ESP_LOGI(TAG, "Text config initialized with font size %d", font ? font->size : 0);
 }
@@ -127,15 +80,17 @@ const FontCharInfo *epd_text_find_char(const FontInfo *font, uint32_t code_point
         return NULL;
     }
     // 半角スペース
-    if(code_point == 0x0020){
-        harf_sp.width = font->size / 2;
+    if (code_point == 0x0020)
+    {
+        harf_sp.img_width = font->size / 2;
         harf_sp.img_height = font->size;
         harf_sp.img_width = font->size / 2;
         return &harf_sp;
     }
     // 全角スペース
-    if(code_point == 0x3000){
-        full_sp.width = font->size;
+    if (code_point == 0x3000)
+    {
+        full_sp.img_width = font->size;
         full_sp.img_height = font->size;
         full_sp.img_width = font->size;
         return &full_sp;
@@ -254,8 +209,9 @@ void draw_rotated_char(EPDWrapper *wrapper, int x, int y,
                        bool bg_transparent)
 {
     // スペースの場合はスキップ
-    if(char_info->code_point == 0x0020 || char_info->code_point == 0x3000) return;
-    
+    if (char_info->code_point == 0x0020 || char_info->code_point == 0x3000)
+        return;
+
     int width = char_info->img_width;
     int height = char_info->img_height;
 
@@ -346,6 +302,7 @@ int epd_text_draw_char(EPDWrapper *wrapper, int x, int y, uint32_t code_point, c
     uint8_t draw_color = config->text_color;
     uint8_t bg_color = config->bg_color;
 
+    /*
     // ベースライン調整
     int y_pos = y;
     if (config->use_baseline)
@@ -359,6 +316,7 @@ int epd_text_draw_char(EPDWrapper *wrapper, int x, int y, uint32_t code_point, c
         x += char_info->x_offset;
         y_pos += char_info->y_offset;
     }
+    */
 
     // ビットマップデータの取得
     const uint8_t *bitmap = config->font->bitmap_data + char_info->data_offset;
@@ -367,13 +325,44 @@ int epd_text_draw_char(EPDWrapper *wrapper, int x, int y, uint32_t code_point, c
     int rotation = 0;
     if (config->vertical)
     {
-                rotation = char_info->rotation;
+        rotation = char_info->rotation;
+    }
+
+    // 回転方向によってオフセットを追加
+    int x_pos = x;
+    int y_pos = y;
+    switch (rotation)
+    {
+    case 0: // 0度回転（そのまま）
+        y_pos += char_info->y_offset;
+        // 等幅または縦書きの場合、左右中央揃えにする
+        if (config->mono_spacing || config->vertical)
+        {
+            x_pos += (config->font->max_width - char_info->img_width) / 2;
+        }
+        break;
+
+    case 3: // 270度回転
+    case 1: // 90度回転（時計回り）縦書きの一部記号「」ー
+        int sub_offset = config->font->max_width - char_info->img_height - char_info->y_offset;
+        x_pos += sub_offset > 0 ? sub_offset : 0;
+        y_pos += char_info->x_offset;
+        break;
+
+    case 2: // 180度回転 縦書きの一部記号、。
+        x_pos += config->font->max_width - char_info->img_height;
+        break;
+
+    default:
+        // デフォルトは回転なし
+        y_pos += char_info->y_offset;
+        break;
     }
 
     // 文字の描画（回転を考慮）
     draw_rotated_char(
         wrapper,
-        x,
+        x_pos,
         y_pos,
         char_info,
         bitmap,
@@ -389,19 +378,31 @@ int epd_text_draw_char(EPDWrapper *wrapper, int x, int y, uint32_t code_point, c
         if (rotation == 0 || rotation == 2)
         {
             // 0度または180度の場合は通常の下線位置
-            int underline_y = y_pos + config->font->max_height + 2;
+            int underline_y = y + config->font->max_height + 2;
             // 文字の幅だけ横線を引く
-            epd_wrapper_draw_line(wrapper, x, underline_y, x + char_info->width, underline_y, draw_color);
+            epd_wrapper_draw_line(wrapper, x, underline_y, x + char_info->img_width, underline_y, draw_color);
         }
         else
         {
             // 90度または270度回転時の下線（横に表示される文字に対して）
             int underline_x = (rotation == 1) ? x - 2 : x + char_info->img_height + 2;
-            epd_wrapper_draw_line(wrapper, underline_x, y_pos, underline_x, y_pos + char_info->width, draw_color);
+            epd_wrapper_draw_line(wrapper, underline_x, y, underline_x, y + char_info->img_width, draw_color);
         }
     }
 
-    return config->vertical ? char_info->img_height : char_info->width;
+    // 等幅とプロポーショナルで進んだサイズが違う。９０度回転した時も
+    if (rotation == 1)
+    {
+        return config->mono_spacing ? config->font->max_height : char_info->img_height;
+    }
+    if (config->mono_spacing)
+    {
+        return config->vertical ? config->font->max_height : config->font->max_width;
+    }
+    else
+    {
+        return config->vertical ? char_info->img_height : char_info->img_width;
+    }
 }
 
 /**
@@ -518,100 +519,6 @@ bool epd_text_is_no_end_char(const FontCharInfo *font_char)
 }
 
 /**
- * @brief テキストの描画幅を計算する
- * @param text 計算するUTF-8文字列
- * @param config テキスト描画設定
- * @return テキストの描画幅（ピクセル単位）
- */
-int epd_text_calc_width(const char *text, const EPDTextConfig *config)
-{
-    if (text == NULL || config == NULL || config->font == NULL)
-    {
-        ESP_LOGE(TAG, "Invalid parameters for calculating text width");
-        return 0;
-    }
-
-    // 文字列の解析
-    const char *ptr = text;
-    uint32_t code_point;
-    int total_width = 0;
-
-    while ((code_point = epd_text_utf8_next_char(&ptr)) != 0)
-    {
-        // フォントから文字情報を取得
-        const FontCharInfo *char_info = epd_text_find_char(config->font, code_point);
-        if (char_info == NULL)
-        {
-            continue; // 文字が見つからない場合はスキップ
-        }
-
-        // 幅を加算（文字間隔も考慮）
-        total_width += char_info->width + config->char_spacing;
-    }
-
-    // 最後の文字間隔を差し引く
-    if (total_width > 0)
-    {
-        total_width -= config->char_spacing;
-    }
-
-    return total_width;
-}
-
-/**
- * @brief テキストの描画高さを計算する
- * @param text 計算するUTF-8文字列
- * @param config テキスト描画設定
- * @return テキストの描画高さ（ピクセル単位）
- */
-int epd_text_calc_height(const char *text, const EPDTextConfig *config)
-{
-    if (text == NULL || config == NULL || config->font == NULL)
-    {
-        ESP_LOGE(TAG, "Invalid parameters for calculating text height");
-        return 0;
-    }
-
-    // フォントの高さを取得
-    int line_height = config->font->max_height;
-
-    // 縦書きモードの場合は個別に文字の高さを計算
-    if (config->vertical)
-    {
-        // 文字列の解析
-        const char *ptr = text;
-        uint32_t code_point;
-        int total_height = 0;
-
-        while ((code_point = epd_text_utf8_next_char(&ptr)) != 0)
-        {
-            // フォントから文字情報を取得
-            const FontCharInfo *char_info = epd_text_find_char(config->font, code_point);
-            if (char_info == NULL)
-            {
-                continue; // 文字が見つからない場合はスキップ
-            }
-
-            // 高さを加算（文字間隔も考慮）
-            total_height += char_info->img_height + config->char_spacing;
-        }
-
-        // 最後の文字間隔を差し引く
-        if (total_height > 0)
-        {
-            total_height -= config->char_spacing;
-        }
-
-        return total_height;
-    }
-    else
-    {
-        // 横書きモード: 単純に文字の高さを返す
-        return line_height;
-    }
-}
-
-/**
  * @brief 複数行のテキストを描画する
  * @param wrapper EPDラッパー構造体へのポインタ
  * @param x X座標
@@ -633,7 +540,7 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
     EPDTextConfig local_config = *config;
 
     // 矩形領域の幅を折り返し幅として設定
-    local_config.wrap_width = local_config.vertical ? rect->height : rect->width;
+    local_config.wrap_width = local_config.vertical ? rect->height - (config->box_padding * 2) : rect->width - (config->box_padding * 2);
 
     ESP_LOGI(TAG, "Drawing multiline text in rect: %d,%d [%dx%d]",
              rect->x, rect->y, rect->width, rect->height);
@@ -646,10 +553,10 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
 
     // 縦書きの場合は描画開始位置は右上-一行幅
     if (local_config.vertical)
-        current_x = rect->x + rect->width - config->box_padding - local_config.font->size;
+        current_x = rect->x + rect->width - config->box_padding - local_config.font->max_width;
 
     // 行の高さ（横書き）または幅（縦書き）
-    int line_size = local_config.vertical ? local_config.font->max_height : local_config.font->max_height + local_config.line_spacing;
+    int line_size = local_config.vertical ? local_config.font->max_width + local_config.line_spacing : local_config.font->max_height + local_config.line_spacing;
 
     // 描画可能な行数を計算
     int max_lines = local_config.vertical ? rect->width / line_size : rect->height / line_size;
@@ -710,22 +617,51 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
             {
                 continue; // 文字が見つからない場合はスキップ
             }
+            // mono spacingかproportionalかで幅と高さを変える
+            int char_width;
+            int char_height;
+            if (config->mono_spacing)
+            {
+                // 等幅はフォント情報から最大幅と最大高さを取得
+                char_width = local_config.font->max_width;
+                char_height = local_config.font->max_height;
+            }
+            else
+            {
+                // プロポーショナルは実際の文字の幅と高さを取得
+                char_width = char_info->img_width;
+                char_height = char_info->img_height;
+            }
             // 前回の文字情報
             const FontCharInfo *prev_char_info;
             if (last_code_point != 0)
             {
                 prev_char_info = epd_text_find_char(local_config.font, last_code_point);
             }
-
+            // 前回文字の幅と高さ
+            int prev_char_width;
+            int prev_char_height;
+            if (config->mono_spacing)
+            {
+                // 等幅はフォント情報から最大幅と最大高さを取得
+                prev_char_width = local_config.font->max_width;
+                prev_char_height = local_config.font->max_height;
+            }
+            else
+            {
+                // プロポーショナルは実際の文字の幅と高さを取得
+                prev_char_width = prev_char_info->img_width;
+                prev_char_height = prev_char_info->img_height;
+            }
             // この文字を追加した場合の幅を計算（横書き用）
-            int new_width = segment_width + local_config.font->size;
+            int new_width = segment_width + char_width;
             if (segment_width > 0)
             {
                 new_width += local_config.char_spacing;
             }
 
             // この文字を追加した場合の高さを計算（縦書き用）
-            int new_height = segment_height + char_info->img_height;
+            int new_height = segment_height + char_height;
             if (segment_height > 0)
             {
                 new_height += local_config.char_spacing;
@@ -762,18 +698,18 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
                         segment_start = prev_char_start;
 
                         // 前の文字と現在の文字の幅を計算
-                        segment_width = (prev_char_info != NULL ? prev_char_info->img_width : 0) +
-                                        local_config.char_spacing + char_info->img_width;
-                        segment_height = (prev_char_info != NULL ? prev_char_info->img_height : 0) +
-                                         local_config.char_spacing + char_info->img_height;
+                        segment_width = (prev_char_info != NULL ? prev_char_width : 0) +
+                                        local_config.char_spacing + char_width;
+                        segment_height = (prev_char_info != NULL ? prev_char_height : 0) +
+                                         local_config.char_spacing + char_height;
                     }
                     else
                     {
                         // 前の文字がない場合は通常の折り返し
                         segments[segment_count++] = segment_start;
                         segment_start = char_start;
-                        segment_width = char_info->img_width;
-                        segment_height = char_info->img_height;
+                        segment_width = char_width;
+                        segment_height = char_height;
                     }
                 }
                 // 行末禁止文字だった場合
@@ -790,18 +726,18 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
 
                         // 行末禁止文字と現在の文字の幅を計算
                         const FontCharInfo *prev_char_info = epd_text_find_char(local_config.font, last_code_point);
-                        segment_width = (prev_char_info != NULL ? prev_char_info->img_width : 0) +
-                                        local_config.char_spacing + char_info->img_width;
-                        segment_height = (prev_char_info != NULL ? prev_char_info->img_height : 0) +
-                                         local_config.char_spacing + char_info->img_height;
+                        segment_width = (prev_char_info != NULL ? prev_char_width : 0) +
+                                        local_config.char_spacing + char_width;
+                        segment_height = (prev_char_info != NULL ? prev_char_height : 0) +
+                                         local_config.char_spacing + char_height;
                     }
                     else
                     {
                         // 通常の折り返し（最初の文字が行末禁止文字の場合）
                         segments[segment_count++] = segment_start;
                         segment_start = char_start;
-                        segment_width = char_info->img_width;
-                        segment_height = char_info->img_height;
+                        segment_width = char_width;
+                        segment_height = char_height;
                     }
                 }
                 else
@@ -809,8 +745,8 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
                     // 通常の折り返し
                     segments[segment_count++] = segment_start;
                     segment_start = char_start;
-                    segment_width = char_info->img_width;
-                    segment_height = char_info->img_height;
+                    segment_width = char_width;
+                    segment_height = char_height;
                 }
             }
             else
