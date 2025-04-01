@@ -20,6 +20,7 @@ def get_char_typography_info(char):
         'is_fullwidth': False,
         'is_no_break_start': False,
         'is_no_break_end': False,
+        'is_no_brank': False,
         'char_type': 'unknown',
         'x_offset': 0,
         'y_offset': 0,
@@ -60,7 +61,7 @@ def get_char_typography_info(char):
         result['char_type'] = 'symbol'
         
         # 特定の記号は縦書きで回転
-        rotated_symbols = '\u301C＝～―()[]{}⟨⟩《》〈〉「」『』【】〔〕（）［］｛｝"\'\'\"'
+        rotated_symbols = '\u301C＝～―()[]{}⟨⟩《》〈〉「」『』【】〔〕（）［］｛｝"\'"…‥'
         if char in rotated_symbols:
             result['needs_rotation'] = True
             result['rotation_angle'] = 90
@@ -74,9 +75,11 @@ def get_char_typography_info(char):
     # 禁則文字判定
     no_break_start_chars = ',.!?)]｝、。，．・：；？！゛゜ヽヾゝゞ々ー」』】〕〉》）］｝〟\'"_ ‐ ー ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ'
     no_break_end_chars = '([｛「『【〔〈《（［｛〝\'"'
+    is_no_brank_chars = '―ー'
     
     result['is_no_break_start'] = char in no_break_start_chars
     result['is_no_break_end'] = char in no_break_end_chars
+    result['is_no_brank'] = char in is_no_brank_chars
     
     return result
 
@@ -359,6 +362,8 @@ def generate_font_header(font_path, font_size, charset, output_file, fallback_fo
                 typo_flags |= 0x08  # ビット3: 行頭禁則文字
             if typo_info['is_no_break_end']:
                 typo_flags |= 0x10  # ビット4: 行末禁則文字
+            if typo_info['is_no_brank']:
+                typo_flags |= 0x20  # ビット5: 余白を詰める文字
             
             # 回転角度を取得（0, 90, 180, 270のいずれか）
             rotation = typo_info['rotation_angle'] // 90

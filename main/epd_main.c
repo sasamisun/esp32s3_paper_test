@@ -455,14 +455,14 @@ void test_multiline_text(EPDWrapper* wrapper) {
     // 横書きマルチラインテスト
     text_config.vertical = false;
     text_config.text_color = 0x00;  // 黒
-    text_config.char_spacing = 2;   // 文字間隔
-    text_config.line_spacing = 5;   // 行間
-    text_config.box_padding = 5;   // 内側余白
+    text_config.char_spacing = 0;   // 文字間隔
+    text_config.line_spacing = 0;   // 行間
+    text_config.box_padding = 0;   // 内側余白
     
     const char* long_text = 
-        "これは、複数行テキスト表示なんですよです。「禁則処理」も考慮されます。\n"
+        "今夜は、月がとてもきれい――だ――。\n"
         "改行も正しく処理されてなんとなんと「折返し」も自動的に行われます。\n"
-        "長～い行は自動的に折り返されて、矩形領域内に収まるように表示されます。"
+        "長～い行は自動的に折り返されて、矩形領。域内に収まるように表示されます。"
         "句読点（、。）やカッコ「」などは行頭・行末禁則処理の対象です。";
     
     int lines = epd_text_draw_multiline(wrapper, &rect1, long_text, &text_config);
@@ -485,8 +485,8 @@ void test_multiline_text(EPDWrapper* wrapper) {
     
     const char* vertical_text = 
         "縦書きのテキスト表示テストです。\n"
-        "「改行」　も正しく処理されます。\n"
-        "長～～い行は自動的に折り返されて、 矩★形☆領△域内†に収まるように表示されます！！";
+        "「改行」も正しく処理されます――。\n"
+        "長～～い行は自動的に折り返されて、矩形領域内†に収ま。るように表示されます！！";
     
     lines = epd_text_draw_multiline(wrapper, &rect2, vertical_text, &text_config);
     ESP_LOGI(TAG, "Drew vertical multiline text with %d lines", lines);

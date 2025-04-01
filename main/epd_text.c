@@ -21,6 +21,46 @@ FontCharInfo harf_sp = {0x0020, 0U, 7, 16, 0U, 0, 0, 0};
 FontCharInfo full_sp = {0x3000, 0U, 7, 16, 0U, 0, 0, 0};
 
 /**
+ * @brief 文字が行頭禁止文字かどうかを判定する
+ * @param code_point 判定するUnicodeコードポイント
+ * @return 行頭禁止文字の場合はtrue、それ以外はfalse
+ */
+bool epd_text_is_no_start_char(const FontCharInfo *font_char)
+{
+    return (font_char->typo_flags & TYPO_FLAG_NO_BREAK_START) != 0;
+}
+
+/**
+ * @brief 文字が行末禁止文字かどうかを判定する
+ * @param code_point 判定するUnicodeコードポイント
+ * @return 行末禁止文字の場合はtrue、それ以外はfalse
+ */
+bool epd_text_is_no_end_char(const FontCharInfo *font_char)
+{
+    return (font_char->typo_flags & TYPO_FLAG_NO_BREAK_END) != 0;
+}
+
+/**
+ * @brief 文字が余白を詰める文字かどうかを判定する
+ * @param code_point 判定するUnicodeコードポイント
+ * @return 余白を詰める文字の場合はtrue、それ以外はfalse
+ */
+bool epd_text_is_no_blank_char(const FontCharInfo *font_char)
+{
+    return (font_char->typo_flags & TYPE_FLAG_NO_BLANK) != 0;
+}
+
+/**
+ * @brief 文字が半角文字かどうかを判定する
+ * @param code_point 判定するUnicodeコードポイント
+ * @return 半角文字の場合はtrue、それ以外はfalse
+ */
+bool epd_text_is_halfwidth(const FontCharInfo *font_char)
+{
+    return (font_char->typo_flags & TYPO_FLAG_HALFWIDTH) != 0;
+}
+
+/**
  * @brief テキスト描画設定を初期化する
  * @param config 初期化する設定構造体へのポインタ
  * @param font 使用するフォント情報
@@ -334,7 +374,14 @@ int epd_text_draw_char(EPDWrapper *wrapper, int x, int y, uint32_t code_point, c
     switch (rotation)
     {
     case 0: // 0度回転（そのまま）
-        y_pos += char_info->y_offset;
+        if(epd_text_is_halfwidth(char_info) || epd_text_is_no_blank_char(char_info)){
+            y_pos += char_info->y_offset;
+        }else if(char_info->code_point == 0x300c){
+            //「のばあいのみ
+            y_pos += 1;
+        }else{
+            y_pos += config->font->baseline - char_info->img_height;
+        }
         // 等幅または縦書きの場合、左右中央揃えにする
         if (config->mono_spacing || config->vertical)
         {
@@ -344,13 +391,21 @@ int epd_text_draw_char(EPDWrapper *wrapper, int x, int y, uint32_t code_point, c
 
     case 3: // 270度回転
     case 1: // 90度回転（時計回り）縦書きの一部記号「」ー
+        if(char_info->code_point == 0x300c){
+            //「のばあいのみ
+            y_pos += 5;
+        }else{
+            y_pos += char_info->x_offset;
+        }
+
         int sub_offset = config->font->max_width - char_info->img_height - char_info->y_offset;
         x_pos += sub_offset > 0 ? sub_offset : 0;
-        y_pos += char_info->x_offset;
+        //y_pos += char_info->x_offset;
         break;
 
     case 2: // 180度回転 縦書きの一部記号、。
         x_pos += config->font->max_width - char_info->img_height;
+        //y_pos += 5;
         break;
 
     default:
@@ -393,7 +448,7 @@ int epd_text_draw_char(EPDWrapper *wrapper, int x, int y, uint32_t code_point, c
     // 等幅とプロポーショナルで進んだサイズが違う。９０度回転した時も
     if (rotation == 1)
     {
-        return config->mono_spacing ? config->font->max_height : char_info->img_height;
+        return config->mono_spacing ? config->font->max_width : char_info->img_width;
     }
     if (config->mono_spacing)
     {
@@ -496,26 +551,6 @@ int epd_text_draw_string(EPDWrapper *wrapper, int x, int y, const char *text, co
 
     // 描画した文字列全体の幅（横書き）または高さ（縦書き）を返す
     return total_advance;
-}
-
-/**
- * @brief 文字が行頭禁止文字かどうかを判定する
- * @param code_point 判定するUnicodeコードポイント
- * @return 行頭禁止文字の場合はtrue、それ以外はfalse
- */
-bool epd_text_is_no_start_char(const FontCharInfo *font_char)
-{
-    return (font_char->typo_flags & TYPO_FLAG_NO_BREAK_START) != 0;
-}
-
-/**
- * @brief 文字が行末禁止文字かどうかを判定する
- * @param code_point 判定するUnicodeコードポイント
- * @return 行末禁止文字の場合はtrue、それ以外はfalse
- */
-bool epd_text_is_no_end_char(const FontCharInfo *font_char)
-{
-    return (font_char->typo_flags & TYPO_FLAG_NO_BREAK_END) != 0;
 }
 
 /**
@@ -633,26 +668,27 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
                 char_height = char_info->img_height;
             }
             // 前回の文字情報
+            // 前回文字の幅と高さ
+            int prev_char_width;
+            int prev_char_height;
             const FontCharInfo *prev_char_info;
             if (last_code_point != 0)
             {
                 prev_char_info = epd_text_find_char(local_config.font, last_code_point);
+                if (config->mono_spacing)
+                {
+                    // 等幅はフォント情報から最大幅と最大高さを取得
+                    prev_char_width = local_config.font->max_width;
+                    prev_char_height = local_config.font->max_height;
+                }
+                else
+                {
+                    // プロポーショナルは実際の文字の幅と高さを取得
+                    prev_char_width = prev_char_info->img_width;
+                    prev_char_height = prev_char_info->img_height;
+                }
             }
-            // 前回文字の幅と高さ
-            int prev_char_width;
-            int prev_char_height;
-            if (config->mono_spacing)
-            {
-                // 等幅はフォント情報から最大幅と最大高さを取得
-                prev_char_width = local_config.font->max_width;
-                prev_char_height = local_config.font->max_height;
-            }
-            else
-            {
-                // プロポーショナルは実際の文字の幅と高さを取得
-                prev_char_width = prev_char_info->img_width;
-                prev_char_height = prev_char_info->img_height;
-            }
+
             // この文字を追加した場合の幅を計算（横書き用）
             int new_width = segment_width + char_width;
             if (segment_width > 0)
@@ -661,7 +697,16 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
             }
 
             // この文字を追加した場合の高さを計算（縦書き用）
-            int new_height = segment_height + char_height;
+            int new_height = 0;
+            if (char_info->rotation == 1)
+            {
+                // 回転してるときは幅を使う。
+                new_height += segment_height + char_width;
+            }
+            else
+            {
+                new_height += segment_height + char_height;
+            }
             if (segment_height > 0)
             {
                 new_height += local_config.char_spacing;
@@ -698,10 +743,20 @@ int epd_text_draw_multiline(EPDWrapper *wrapper, EpdRect *rect, const char *text
                         segment_start = prev_char_start;
 
                         // 前の文字と現在の文字の幅を計算
-                        segment_width = (prev_char_info != NULL ? prev_char_width : 0) +
-                                        local_config.char_spacing + char_width;
-                        segment_height = (prev_char_info != NULL ? prev_char_height : 0) +
-                                         local_config.char_spacing + char_height;
+                        if (char_info->rotation == 1)
+                        {
+                            segment_width = (prev_char_info != NULL ? prev_char_height : 0) +
+                                            local_config.char_spacing + char_height;
+                            segment_height = (prev_char_info != NULL ? prev_char_width : 0) +
+                                             local_config.char_spacing + char_width;
+                        }
+                        else
+                        {
+                            segment_width = (prev_char_info != NULL ? prev_char_width : 0) +
+                                            local_config.char_spacing + char_width;
+                            segment_height = (prev_char_info != NULL ? prev_char_height : 0) +
+                                             local_config.char_spacing + char_height;
+                        }
                     }
                     else
                     {

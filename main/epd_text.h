@@ -22,6 +22,7 @@
  #define TYPO_FLAG_FULLWIDTH       0x04  // 全角文字
  #define TYPO_FLAG_NO_BREAK_START  0x08  // 行頭禁則文字
  #define TYPO_FLAG_NO_BREAK_END    0x10  // 行末禁則文字
+ #define TYPE_FLAG_NO_BLANK        0x20  // 余白を詰める文字(―)
  
  /**
   * @brief フォント文字情報構造体
