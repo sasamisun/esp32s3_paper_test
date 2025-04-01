@@ -6,6 +6,7 @@ idf_component_register(
         "epd_wrapper.c"
         "epd_transition.c"
         "epd_text.c"
+        "gt911.c"
     PRIV_REQUIRES 
         "epdiy" 
         "driver" 

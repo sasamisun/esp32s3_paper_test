@@ -29,72 +29,100 @@
 #include "epd_text.h"
 #include "Mplus2-Light_16.h"
 
+#include "gt911.h"
+
+// グローバル変数
+GT911_Device g_touch_device;
+EPDWrapper epd; // 既存のEPDWrapper
+
+#define CIRCLE_RADIUS 20     // 描画する円の半径
+#define CIRCLE_COLOR 0x00    // 円の色（黒）
+#define TOUCH_UPDATE_AREA 50 // 更新領域のサイズ（丸の直径より少し大きく）
+
+// 前回描画した円の座標を保存
+static int last_circle_x = -1;
+static int last_circle_y = -1;
+
 // For debugging
 static const char *TAG = "epd_example";
 
 void draw_sprash(EPDWrapper *wrapper);
 void transition(EPDWrapper *epd, const uint8_t *newimage, TransitionType type);
 void test_text_display(EPDWrapper *wrapper);
-void test_text_drawing(EPDWrapper* wrapper);
-void test_multiline_text(EPDWrapper* wrapper);
+void test_text_drawing(EPDWrapper *wrapper);
+void test_multiline_text(EPDWrapper *wrapper);
+
+// タッチイベントコールバック
+static void touch_event_handler(GT911_Device *device);
+
+// タッチ位置に丸を描画する関数
+static void draw_circle_at_touch(int x, int y);
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Starting ED047TC1 E-Paper example with epdiy 2.0 and EPD Wrapper");
+    ESP_LOGI(TAG, "Starting ED047TC1 E-Paper example with touch support");
 
-    // EPD Wrapperの状態変数
-    EPDWrapper epd;
-    memset(&epd, 0, sizeof(EPDWrapper)); // 初期化前に構造体をクリア
-
-    // EPD Wrapperの初期化
-    ESP_LOGI(TAG, "Initializing EPD Wrapper");
+    // EPD Wrapperの初期化（既存のコード）
+    memset(&epd, 0, sizeof(EPDWrapper));
     if (!epd_wrapper_init(&epd))
     {
         ESP_LOGE(TAG, "Failed to initialize EPD Wrapper");
         return;
     }
-
-    // 初期化後、少し待機
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
     // 電源ON
     ESP_LOGI(TAG, "Powering on the display");
     epd_wrapper_power_on(&epd);
-
-    // 電源ON後、少し待機
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-    // 描画
-    draw_sprash(&epd);
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-    // epd_wrapper_draw_rotated_image(&epd, 0, 0, BG1_WIDTH, BG1_HEIGHT, bg2_data, true);
-    // epd_wrapper_update_screen(&epd, MODE_GC16);
+    // 画面を白でクリア
+    epd_wrapper_clear_cycles(&epd, 1);
 
-    // vTaskDelay(500 / portTICK_PERIOD_MS);
-    // transition(&epd, ich_data, TRANSITION_WIPE);
-    // vTaskDelay(500 / portTICK_PERIOD_MS);
-    // transition(&epd, bg1_data, TRANSITION_SLIDE_LEFT);
-    // vTaskDelay(500 / portTICK_PERIOD_MS);
-    // transition(&epd, bg2_data, TRANSITION_SLIDE_UP);
+    // GT911タッチコントローラの初期化
+    ESP_LOGI(TAG, "Initializing touch controller");
+    bool touch_init_ok = gt911_init(&g_touch_device,
+                                    GPIO_NUM_41,  // SDA
+                                    GPIO_NUM_42,  // SCL
+                                    GPIO_NUM_48,  // INT
+                                    GPIO_NUM_NC); // RST (使用しない場合)
 
-    // テキスト表示テスト
-    //test_text_display(&epd);
-    test_multiline_text(&epd);
-    // 更新後しばらく待機
+    if (touch_init_ok)
+    {
+        // タッチイベントコールバックの登録
+        gt911_register_callback(&g_touch_device, touch_event_handler);
+        ESP_LOGI(TAG, "Touch controller initialized successfully");
+
+        // 画面にタッチ操作を促すメッセージを表示
+        // ※EPDTextライブラリを使ってテキストを表示する場合
+        EPDTextConfig text_config;
+        epd_text_config_init(&text_config, &Mplus2_Light_16); // 適切なフォントを指定
+        text_config.text_color = 0x00;                        // 黒
+
+        epd_text_draw_string(&epd, 100, 100, "Touch the screen to draw circles", &text_config);
+        epd_wrapper_update_screen(&epd, MODE_GC16);
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Failed to initialize touch controller");
+
+        // エラーメッセージを表示
+        EPDTextConfig text_config;
+        epd_text_config_init(&text_config, &Mplus2_Light_16);
+        text_config.text_color = 0x00;
+
+        epd_text_draw_string(&epd, 100, 100, "Touch controller initialization failed!", &text_config);
+        epd_wrapper_update_screen(&epd, MODE_GC16);
+    }
+
+    // メインループは必要ありません - タッチ処理はGT911タスクが行います
+
+    // バグ防止のため、app_main終了前に少し待機
     vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-    // 電源OFF
-    ESP_LOGI(TAG, "Powering off the display");
-    epd_wrapper_power_off(&epd);
+    ESP_LOGI(TAG, "App initialized, waiting for touch events...");
 
-    // 電源OFFが完了するまで待機
-    vTaskDelay(200 / portTICK_PERIOD_MS);
-
-    // EPD Wrapperの終了処理
-    ESP_LOGI(TAG, "Deinitializing EPD Wrapper");
-    epd_wrapper_deinit(&epd);
-
-    ESP_LOGI(TAG, "Example completed successfully");
+    // ここでapp_mainは終了しますが、GT911タスクは継続して実行されます
 }
 
 void draw_sprash(EPDWrapper *epd)
@@ -283,6 +311,104 @@ void transition(EPDWrapper *epd, const uint8_t *image_data, TransitionType type)
     epd_transition_deinit(epd, &transition);
 }
 
+// タッチイベントコールバック
+static void touch_event_handler(GT911_Device *device)
+{
+    if (device->active_points > 0)
+    {
+        ESP_LOGI(TAG, "Touch detected: %d points", device->active_points);
+
+        // 最初のタッチポイントの座標を取得
+        int touch_x = device->points[0].x;
+        int touch_y = device->points[0].y;
+
+        // 座標変換（必要に応じて調整）
+        // 例: X座標は反転、Y座標はそのまま
+        int screen_x = 960 - touch_x; // ディスプレイの幅に基づく反転
+        int screen_y = touch_y;
+
+        ESP_LOGI(TAG, "Raw touch point: x=%d, y=%d, size=%d",
+                 touch_x, touch_y, device->points[0].size);
+        ESP_LOGI(TAG, "Mapped to screen: x=%d, y=%d", screen_x, screen_y);
+
+        // 変換後の座標で丸を描画
+        draw_circle_at_touch(screen_x, screen_y);
+    }
+}
+
+// タッチ位置に丸を描画する関数
+static void draw_circle_at_touch(int x, int y)
+{
+    // 前回描画した丸を消去（白で塗りつぶし）
+    if (last_circle_x >= 0 && last_circle_y >= 0)
+    {
+        epd_wrapper_fill_circle(&epd, last_circle_x, last_circle_y, CIRCLE_RADIUS, 0xFF);
+    }
+
+    // 新しい位置に丸を描画
+    epd_wrapper_fill_circle(&epd, x, y, CIRCLE_RADIUS, CIRCLE_COLOR);
+
+    // 更新領域を計算（最新の丸と前回の丸の両方を含む）
+    int update_x, update_y, update_width, update_height;
+
+    if (last_circle_x >= 0 && last_circle_y >= 0)
+    {
+        // 前回と今回の両方の丸を含む矩形を計算
+        int min_x = (x < last_circle_x) ? x : last_circle_x;
+        int min_y = (y < last_circle_y) ? y : last_circle_y;
+        int max_x = (x > last_circle_x) ? x : last_circle_x;
+        int max_y = (y > last_circle_y) ? y : last_circle_y;
+
+        update_x = min_x - CIRCLE_RADIUS - 5;
+        update_y = min_y - CIRCLE_RADIUS - 5;
+        update_width = (max_x - min_x) + CIRCLE_RADIUS * 2 + 10;
+        update_height = (max_y - min_y) + CIRCLE_RADIUS * 2 + 10;
+    }
+    else
+    {
+        // 初めての描画の場合
+        update_x = x - CIRCLE_RADIUS - 5;
+        update_y = y - CIRCLE_RADIUS - 5;
+        update_width = CIRCLE_RADIUS * 2 + 10;
+        update_height = CIRCLE_RADIUS * 2 + 10;
+    }
+
+    // 画面の境界をチェック
+    if (update_x < 0)
+    {
+        update_width += update_x;
+        update_x = 0;
+    }
+    if (update_y < 0)
+    {
+        update_height += update_y;
+        update_y = 0;
+    }
+    if (update_x + update_width > epd_wrapper_get_width(&epd))
+    {
+        update_width = epd_wrapper_get_width(&epd) - update_x;
+    }
+    if (update_y + update_height > epd_wrapper_get_height(&epd))
+    {
+        update_height = epd_wrapper_get_height(&epd) - update_y;
+    }
+
+    // MODE_DUを使って部分更新（高速更新）
+    EpdRect area = {
+        .x = update_x,
+        .y = update_y,
+        .width = update_width,
+        .height = update_height};
+    epd_hl_update_area(&epd.hl_state, MODE_DU, epd_ambient_temperature(), area);
+
+    // 今回の座標を保存
+    last_circle_x = x;
+    last_circle_y = y;
+
+    ESP_LOGI(TAG, "Drew circle at (%d, %d), updated area: (%d, %d, %d, %d)",
+             x, y, update_x, update_y, update_width, update_height);
+}
+
 // 既存の app_main 関数に追加するテキスト表示のテスト関数
 void test_text_display(EPDWrapper *epd)
 {
@@ -365,60 +491,61 @@ void test_text_display(EPDWrapper *epd)
  * @brief テキスト描画機能のテスト
  * @param wrapper EPDラッパー構造体へのポインタ
  */
-void test_text_drawing(EPDWrapper* wrapper) {
+void test_text_drawing(EPDWrapper *wrapper)
+{
     ESP_LOGI(TAG, "Starting text drawing tests");
-    
+
     // テキスト設定の初期化
     EPDTextConfig text_config;
     epd_text_config_init(&text_config, &Mplus2_Light_16);
-    
+
     // 表示領域の取得
     int display_width = epd_wrapper_get_width(wrapper);
-    //int display_height = epd_wrapper_get_height(wrapper);
-    
+    // int display_height = epd_wrapper_get_height(wrapper);
+
     // ディスプレイをクリア
     epd_wrapper_fill(wrapper, 0xFF);
-    
+
     // 横書きテスト
     ESP_LOGI(TAG, "Testing horizontal text");
     text_config.vertical = false;
-    text_config.text_color = 0x00;  // 黒
+    text_config.text_color = 0x00; // 黒
     text_config.underline = false;
-    
+
     int y_pos = 50;
     int drawn_width = epd_text_draw_string(wrapper, 50, y_pos, "こんにちは世界！", &text_config);
     ESP_LOGI(TAG, "Drew horizontal string with width: %d", drawn_width);
-    
+
     // 下線付きテスト
     y_pos += 40;
     text_config.underline = true;
     drawn_width = epd_text_draw_string(wrapper, 50, y_pos, "Hello, World!", &text_config);
     ESP_LOGI(TAG, "Drew underlined string with width: %d", drawn_width);
-    
+
     // 長い文字列のクリッピングテスト
     y_pos += 40;
     text_config.underline = false;
-    const char* long_string = "これは非常に長い文字列で、画面の端を超えるとクリッピングされるはずです。";
+    const char *long_string = "これは非常に長い文字列で、画面の端を超えるとクリッピングされるはずです。";
     drawn_width = epd_text_draw_string(wrapper, 50, y_pos, long_string, &text_config);
     ESP_LOGI(TAG, "Drew clipped long string with width: %d", drawn_width);
-    
+
     // 縦書きテスト
     ESP_LOGI(TAG, "Testing vertical text");
     text_config.vertical = true;
-    text_config.text_color = 0x00;  // 黒
-    
+    text_config.text_color = 0x00; // 黒
+
     int x_pos = display_width - 50;
     int drawn_height = epd_text_draw_string(wrapper, x_pos, 50, "縦書きテスト", &text_config);
     ESP_LOGI(TAG, "Drew vertical string with height: %d", drawn_height);
-    
+
     // 白黒反転テスト
-    epd_wrapper_fill_rect(wrapper, 50, 200, 200, 40, 0x00);  // 黒い背景矩形
-    
+    epd_wrapper_fill_rect(wrapper, 50, 200, 200, 40, 0x00); // 黒い背景矩形
+
     text_config.vertical = false;
-    text_config.text_color = 0xFF;  // 白
+    text_config.text_color = 0xFF; // 白
     drawn_width = epd_text_draw_string(wrapper, 70, 210, "White on Black", &text_config);
     ESP_LOGI(TAG, "Drew white on black text with width: %d", drawn_width);
-    
+
     // 画面を更新
     epd_wrapper_update_screen(wrapper, MODE_GC16);
 }
@@ -427,94 +554,92 @@ void test_text_drawing(EPDWrapper* wrapper) {
  * @brief マルチラインテキスト描画のテスト
  * @param wrapper EPDラッパー構造体へのポインタ
  */
-void test_multiline_text(EPDWrapper* wrapper) {
+void test_multiline_text(EPDWrapper *wrapper)
+{
     ESP_LOGI(TAG, "Starting multiline text drawing tests");
-    
+
     // テキスト設定の初期化
     EPDTextConfig text_config;
     epd_text_config_init(&text_config, &Mplus2_Light_16);
-    
+
     // ディスプレイサイズを取得
     int display_width = epd_wrapper_get_width(wrapper);
     int display_height = epd_wrapper_get_height(wrapper);
-    
+
     // ディスプレイをクリア
     epd_wrapper_fill(wrapper, 0xFF);
-    
+
     // 矩形領域の定義 - 左上の領域
     EpdRect rect1 = {
         .x = 20,
         .y = 20,
         .width = 300,
-        .height = 200
-    };
-    
+        .height = 200};
+
     // 矩形枠を描画（領域を視覚化）
     epd_wrapper_draw_rect(wrapper, rect1.x, rect1.y, rect1.width, rect1.height, 0x00);
-    
+
     // 横書きマルチラインテスト
     text_config.vertical = false;
-    text_config.text_color = 0x00;  // 黒
-    text_config.char_spacing = 2;   // 文字間隔
-    text_config.line_spacing = 5;   // 行間
+    text_config.text_color = 0x00; // 黒
+    text_config.char_spacing = 2;  // 文字間隔
+    text_config.line_spacing = 5;  // 行間
     text_config.box_padding = 5;   // 内側余白
-    
-    const char* long_text = 
+
+    const char *long_text =
         "これは、複数行テキスト表示なんですよです。「禁則処理」も考慮されます。\n"
         "改行も正しく処理されてなんとなんと「折返し」も自動的に行われます。\n"
         "長～い行は自動的に折り返されて、矩形領域内に収まるように表示されます。"
         "句読点（、。）やカッコ「」などは行頭・行末禁則処理の対象です。";
-    
+
     int lines = epd_text_draw_multiline(wrapper, &rect1, long_text, &text_config);
     ESP_LOGI(TAG, "Drew horizontal multiline text with %d lines", lines);
-    
+
     // 矩形領域の定義 - 右側の領域
     EpdRect rect2 = {
         .x = display_width - 170,
         .y = 20,
         .width = 150,
-        .height = 400
-    };
-    
+        .height = 400};
+
     // 矩形枠を描画（領域を視覚化）
     epd_wrapper_draw_rect(wrapper, rect2.x, rect2.y, rect2.width, rect2.height, 0x00);
-    
+
     // 縦書きマルチラインテスト
     text_config.vertical = true;
-    text_config.text_color = 0x00;  // 黒
-    
-    const char* vertical_text = 
+    text_config.text_color = 0x00; // 黒
+
+    const char *vertical_text =
         "縦書きのテキスト表示テストです。\n"
         "「改行」　も正しく処理されます。\n"
         "長～～い行は自動的に折り返されて、 矩★形☆領△域内†に収まるように表示されます！！";
-    
+
     lines = epd_text_draw_multiline(wrapper, &rect2, vertical_text, &text_config);
     ESP_LOGI(TAG, "Drew vertical multiline text with %d lines", lines);
-    
+
     // 矩形領域の定義 - 下部の領域
     EpdRect rect3 = {
         .x = 20,
         .y = display_height - 150,
         .width = 500,
-        .height = 120
-    };
-    
+        .height = 120};
+
     // 矩形枠を描画（領域を視覚化）
     epd_wrapper_draw_rect(wrapper, rect3.x, rect3.y, rect3.width, rect3.height, 0x00);
     epd_wrapper_fill_rect(wrapper, rect3.x, rect3.y, rect3.width, rect3.height, 0x00);
-    
+
     // 白文字のマルチラインテスト
     text_config.vertical = false;
-    text_config.text_color = 0xFF;  // 白
-    
-    const char* white_text = 
+    text_config.text_color = 0xFF; // 白
+
+    const char *white_text =
         "これは、白背景に白文字で表示するテストです。\n"
         "テキストも複数行で表示され矩形範囲内に収まります。\n"
         "This is white text.";
-    
+
     lines = epd_text_draw_multiline(wrapper, &rect3, white_text, &text_config);
     ESP_LOGI(TAG, "Drew white multiline text with %d lines", lines);
-    
+
     // 画面を更新
     epd_wrapper_update_screen(wrapper, MODE_GC16);
 }
