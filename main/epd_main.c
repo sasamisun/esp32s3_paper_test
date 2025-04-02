@@ -29,22 +29,13 @@
 #include "epd_text.h"
 #include "Mplus2-Light_16.h"
 
+// タッチコントローラ
 #include "gt911.h"
+static const char *TAG = "touch_test";
 
 // グローバル変数
-GT911_Device g_touch_device;
-EPDWrapper epd; // 既存のEPDWrapper
-
-#define CIRCLE_RADIUS 20     // 描画する円の半径
-#define CIRCLE_COLOR 0x00    // 円の色（黒）
-#define TOUCH_UPDATE_AREA 50 // 更新領域のサイズ（丸の直径より少し大きく）
-
-// 前回描画した円の座標を保存
-static int last_circle_x = -1;
-static int last_circle_y = -1;
-
-// For debugging
-static const char *TAG = "epd_example";
+static EPDWrapper epd;
+static GT911_Device g_touch_device;
 
 void draw_sprash(EPDWrapper *wrapper);
 void transition(EPDWrapper *epd, const uint8_t *newimage, TransitionType type);
@@ -55,74 +46,58 @@ void test_multiline_text(EPDWrapper *wrapper);
 // タッチイベントコールバック
 static void touch_event_handler(GT911_Device *device);
 
-// タッチ位置に丸を描画する関数
-static void draw_circle_at_touch(int x, int y);
-
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Starting ED047TC1 E-Paper example with touch support");
+    ESP_LOGI(TAG, "Starting Touch Test Application");
 
-    // EPD Wrapperの初期化（既存のコード）
+    // EPD Wrapperの初期化
+    ESP_LOGI(TAG, "Initializing EPD Wrapper");
     memset(&epd, 0, sizeof(EPDWrapper));
+
     if (!epd_wrapper_init(&epd))
     {
         ESP_LOGE(TAG, "Failed to initialize EPD Wrapper");
         return;
     }
-    vTaskDelay(100 / portTICK_PERIOD_MS);
 
-    // 電源ON
-    ESP_LOGI(TAG, "Powering on the display");
+    // 電源をONにする
     epd_wrapper_power_on(&epd);
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-    // 画面を白でクリア
-    epd_wrapper_clear_cycles(&epd, 1);
+    // 画面を白で初期化
+    ESP_LOGI(TAG, "Clearing the display");
+    epd_wrapper_fill(&epd, 0xFF); // 白で塗りつぶし
+    epd_wrapper_update_screen(&epd, MODE_GC16);
 
-    // GT911タッチコントローラの初期化
+    // 画面の中央に説明テキストを描画 (オプション - epd_text.hが必要)
+    // epd_text_draw_string(&g_epd, 100, 100, "Touch the screen to draw circles", &text_config);
+
+    // 画面の枠を描画
+    int width = epd_wrapper_get_width(&epd);
+    int height = epd_wrapper_get_height(&epd);
+    epd_wrapper_draw_rect(&epd, 10, 10, width - 20, height - 20, 0x00);
+    epd_wrapper_update_screen(&epd, MODE_GC16);
+
+    // タッチコントローラの初期化
     ESP_LOGI(TAG, "Initializing touch controller");
-    bool touch_init_ok = gt911_init(&g_touch_device,
-                                    GPIO_NUM_41,  // SDA
-                                    GPIO_NUM_42,  // SCL
-                                    GPIO_NUM_48,  // INT
-                                    GPIO_NUM_NC); // RST (使用しない場合)
-
-    if (touch_init_ok)
-    {
-        // タッチイベントコールバックの登録
-        gt911_register_callback(&g_touch_device, touch_event_handler);
-        ESP_LOGI(TAG, "Touch controller initialized successfully");
-
-        // 画面にタッチ操作を促すメッセージを表示
-        // ※EPDTextライブラリを使ってテキストを表示する場合
-        EPDTextConfig text_config;
-        epd_text_config_init(&text_config, &Mplus2_Light_16); // 適切なフォントを指定
-        text_config.text_color = 0x00;                        // 黒
-
-        epd_text_draw_string(&epd, 100, 100, "Touch the screen to draw circles", &text_config);
-        epd_wrapper_update_screen(&epd, MODE_GC16);
-    }
-    else
+    if (!gt911_init(&g_touch_device, GT911_I2C_SDA_PIN, GT911_I2C_SCL_PIN,
+                    GT911_INT_PIN, GPIO_NUM_NC))
     {
         ESP_LOGE(TAG, "Failed to initialize touch controller");
-
-        // エラーメッセージを表示
-        EPDTextConfig text_config;
-        epd_text_config_init(&text_config, &Mplus2_Light_16);
-        text_config.text_color = 0x00;
-
-        epd_text_draw_string(&epd, 100, 100, "Touch controller initialization failed!", &text_config);
-        epd_wrapper_update_screen(&epd, MODE_GC16);
+        return;
     }
 
-    // メインループは必要ありません - タッチ処理はGT911タスクが行います
+    // タッチコールバック関数の登録
+    gt911_register_callback(&g_touch_device, touch_event_handler, &epd);
 
-    // バグ防止のため、app_main終了前に少し待機
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    ESP_LOGI(TAG, "Touch test application ready");
+    ESP_LOGI(TAG, "Touch the screen to draw circles");
 
-    ESP_LOGI(TAG, "App initialized, waiting for touch events...");
-
-    // ここでapp_mainは終了しますが、GT911タスクは継続して実行されます
+    // メインループ (タッチ処理はコールバックで行われるため、ここでは何もしない)
+    while (1)
+    {
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
 }
 
 void draw_sprash(EPDWrapper *epd)
@@ -311,102 +286,33 @@ void transition(EPDWrapper *epd, const uint8_t *image_data, TransitionType type)
     epd_transition_deinit(epd, &transition);
 }
 
-// タッチイベントコールバック
-static void touch_event_handler(GT911_Device *device)
+
+// タッチイベントコールバック関数
+static void touch_event_handler(GT911_Device* device, void* user_data)
 {
+    EPDWrapper *e_epd = (EPDWrapper *)user_data;
+
+    // アクティブなタッチポイントがあるか確認
     if (device->active_points > 0)
     {
-        ESP_LOGI(TAG, "Touch detected: %d points", device->active_points);
+        for (uint8_t i = 0; i < device->active_points; i++)
+        {
+            // 押されている場合のみ処理
+            if (device->points[i].is_pressed)
+            {
+                int x = device->points[i].x;
+                int y = device->points[i].y;
 
-        // 最初のタッチポイントの座標を取得
-        int touch_x = device->points[0].x;
-        int touch_y = device->points[0].y;
+                ESP_LOGI(TAG, "Touch detected at (%d,%d)", x, y);
 
-        // 座標変換（必要に応じて調整）
-        // 例: X座標は反転、Y座標はそのまま
-        int screen_x = 960 - touch_x; // ディスプレイの幅に基づく反転
-        int screen_y = touch_y;
+                // タッチ位置に円を描画
+                epd_wrapper_fill_circle(e_epd, x, y, 10, 0x00); // 黒い円を描画
 
-        ESP_LOGI(TAG, "Raw touch point: x=%d, y=%d, size=%d",
-                 touch_x, touch_y, device->points[0].size);
-        ESP_LOGI(TAG, "Mapped to screen: x=%d, y=%d", screen_x, screen_y);
-
-        // 変換後の座標で丸を描画
-        draw_circle_at_touch(screen_x, screen_y);
+                // 画面を更新 (部分更新モードを使用)
+                epd_wrapper_update_screen(e_epd, MODE_DU);
+            }
+        }
     }
-}
-
-// タッチ位置に丸を描画する関数
-static void draw_circle_at_touch(int x, int y)
-{
-    // 前回描画した丸を消去（白で塗りつぶし）
-    if (last_circle_x >= 0 && last_circle_y >= 0)
-    {
-        epd_wrapper_fill_circle(&epd, last_circle_x, last_circle_y, CIRCLE_RADIUS, 0xFF);
-    }
-
-    // 新しい位置に丸を描画
-    epd_wrapper_fill_circle(&epd, x, y, CIRCLE_RADIUS, CIRCLE_COLOR);
-
-    // 更新領域を計算（最新の丸と前回の丸の両方を含む）
-    int update_x, update_y, update_width, update_height;
-
-    if (last_circle_x >= 0 && last_circle_y >= 0)
-    {
-        // 前回と今回の両方の丸を含む矩形を計算
-        int min_x = (x < last_circle_x) ? x : last_circle_x;
-        int min_y = (y < last_circle_y) ? y : last_circle_y;
-        int max_x = (x > last_circle_x) ? x : last_circle_x;
-        int max_y = (y > last_circle_y) ? y : last_circle_y;
-
-        update_x = min_x - CIRCLE_RADIUS - 5;
-        update_y = min_y - CIRCLE_RADIUS - 5;
-        update_width = (max_x - min_x) + CIRCLE_RADIUS * 2 + 10;
-        update_height = (max_y - min_y) + CIRCLE_RADIUS * 2 + 10;
-    }
-    else
-    {
-        // 初めての描画の場合
-        update_x = x - CIRCLE_RADIUS - 5;
-        update_y = y - CIRCLE_RADIUS - 5;
-        update_width = CIRCLE_RADIUS * 2 + 10;
-        update_height = CIRCLE_RADIUS * 2 + 10;
-    }
-
-    // 画面の境界をチェック
-    if (update_x < 0)
-    {
-        update_width += update_x;
-        update_x = 0;
-    }
-    if (update_y < 0)
-    {
-        update_height += update_y;
-        update_y = 0;
-    }
-    if (update_x + update_width > epd_wrapper_get_width(&epd))
-    {
-        update_width = epd_wrapper_get_width(&epd) - update_x;
-    }
-    if (update_y + update_height > epd_wrapper_get_height(&epd))
-    {
-        update_height = epd_wrapper_get_height(&epd) - update_y;
-    }
-
-    // MODE_DUを使って部分更新（高速更新）
-    EpdRect area = {
-        .x = update_x,
-        .y = update_y,
-        .width = update_width,
-        .height = update_height};
-    epd_hl_update_area(&epd.hl_state, MODE_DU, epd_ambient_temperature(), area);
-
-    // 今回の座標を保存
-    last_circle_x = x;
-    last_circle_y = y;
-
-    ESP_LOGI(TAG, "Drew circle at (%d, %d), updated area: (%d, %d, %d, %d)",
-             x, y, update_x, update_y, update_width, update_height);
 }
 
 // 既存の app_main 関数に追加するテキスト表示のテスト関数
