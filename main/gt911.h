@@ -119,12 +119,6 @@ typedef struct
     bool is_pressed;     // 押下状態
 } GT911_TouchKey;
 
-// 前方宣言
-typedef struct GT911_Device GT911_Device1;
-
-// タッチイベント通知用コールバック関数の型定義
-typedef void (*gt911_touch_callback_t)(GT911_Device1* device, void* user_data);
-
 // GT911状態管理構造体
 typedef struct
 {
@@ -151,10 +145,14 @@ typedef struct
     // 割り込み処理用
     SemaphoreHandle_t touch_semaphore; // タッチイベント通知用セマフォ
     TaskHandle_t interrupt_task;       // 割り込み処理タスク
-    //gt911_touch_callback_t callback;   // タッチコールバック関数
+    
     void *user_data;                   // ユーザーデータポインタ
 } GT911_Device;
 
+// コールバック関数の型定義
+typedef void (*gt911_touch_callback_t)(GT911_Device* device);
+
+gt911_touch_callback_t callback;   // タッチコールバック関数
 
 /**
  * @brief GT911を初期化する

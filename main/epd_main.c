@@ -43,8 +43,96 @@ void test_text_display(EPDWrapper *wrapper);
 void test_text_drawing(EPDWrapper *wrapper);
 void test_multiline_text(EPDWrapper *wrapper);
 
-// タッチイベントコールバック
-static void touch_event_handler(GT911_Device *device);
+// タッチハンドリング用のタスク
+static void touch_handling_task(void *pvParameters);
+
+// タスクハンドル
+static TaskHandle_t touch_task_handle = NULL;
+
+// タスク間で共有するデータ構造
+typedef struct {
+    EPDWrapper *epd;
+    GT911_Device *touch_device;
+    bool running;
+} TouchTaskParams;
+
+// グローバル変数として定義
+static TouchTaskParams touch_params;
+
+/**
+ * @brief I2Cバスを初期化する
+ * @param i2c_port I2Cポート番号
+ * @param sda_pin SDAピン番号
+ * @param scl_pin SCLピン番号
+ * @param freq_hz クロック周波数
+ * @return 初期化成功の場合true、失敗の場合false
+ */
+static bool i2c_initialize(i2c_port_t i2c_port, int sda_pin, int scl_pin, uint32_t freq_hz)
+{
+    ESP_LOGI(TAG, "Initializing I2C bus (port: %d, SDA: %d, SCL: %d, freq: %lu Hz)",
+             i2c_port, sda_pin, scl_pin, freq_hz);
+
+    i2c_config_t conf = {
+        .mode = I2C_MODE_MASTER,
+        .sda_io_num = sda_pin,
+        .scl_io_num = scl_pin,
+        .sda_pullup_en = GPIO_PULLUP_ENABLE,
+        .scl_pullup_en = GPIO_PULLUP_ENABLE,
+        .master.clk_speed = freq_hz};
+
+    esp_err_t ret = i2c_param_config(i2c_port, &conf);
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "I2C parameter config failed: %s", esp_err_to_name(ret));
+        return false;
+    }
+
+    // ドライバがすでにインストールされているか確認
+    ret = i2c_driver_install(i2c_port, I2C_MODE_MASTER, 0, 0, 0);
+    if (ret != ESP_OK)
+    {
+        if (ret == ESP_ERR_INVALID_STATE)
+        {
+            ESP_LOGW(TAG, "I2C driver already installed");
+            return true; // すでにインストール済みなら成功とみなす
+        }
+        else
+        {
+            ESP_LOGE(TAG, "I2C driver install failed: %s", esp_err_to_name(ret));
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief I2Cバス上のデバイスをスキャンする
+ * @param i2c_port I2Cポート番号
+ */
+static void i2c_scan(i2c_port_t i2c_port)
+{
+    ESP_LOGI(TAG, "Scanning I2C bus...");
+
+    uint8_t address;
+    for (address = 1; address < 127; address++)
+    {
+        i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+        i2c_master_start(cmd);
+        i2c_master_write_byte(cmd, (address << 1) | I2C_MASTER_WRITE, true);
+        i2c_master_stop(cmd);
+
+        esp_err_t ret = i2c_master_cmd_begin(i2c_port, cmd, 50 / portTICK_PERIOD_MS);
+        i2c_cmd_link_delete(cmd);
+
+        if (ret == ESP_OK)
+        {
+            ESP_LOGI(TAG, "Found I2C device at address 0x%02X (7-bit)", address);
+        }
+    }
+
+    ESP_LOGI(TAG, "I2C scan completed");
+}
 
 void app_main(void)
 {
@@ -66,11 +154,7 @@ void app_main(void)
 
     // 画面を白で初期化
     ESP_LOGI(TAG, "Clearing the display");
-    epd_wrapper_fill(&epd, 0xFF); // 白で塗りつぶし
-    epd_wrapper_update_screen(&epd, MODE_GC16);
-
-    // 画面の中央に説明テキストを描画 (オプション - epd_text.hが必要)
-    // epd_text_draw_string(&g_epd, 100, 100, "Touch the screen to draw circles", &text_config);
+    epd_wrapper_clear_cycles(&epd,2);
 
     // 画面の枠を描画
     int width = epd_wrapper_get_width(&epd);
@@ -78,26 +162,156 @@ void app_main(void)
     epd_wrapper_draw_rect(&epd, 10, 10, width - 20, height - 20, 0x00);
     epd_wrapper_update_screen(&epd, MODE_GC16);
 
+    // I2Cの初期化
+    if (!i2c_initialize(GT911_I2C_PORT, GT911_I2C_SDA_PIN, GT911_I2C_SCL_PIN, GT911_I2C_FREQ_HZ))
+    {
+        ESP_LOGE(TAG, "Failed to initialize I2C");
+        return;
+    }
+
+    // I2Cスキャンを実行
+    i2c_scan(GT911_I2C_PORT);
+
     // タッチコントローラの初期化
     ESP_LOGI(TAG, "Initializing touch controller");
     if (!gt911_init(&g_touch_device, GT911_I2C_SDA_PIN, GT911_I2C_SCL_PIN,
                     GT911_INT_PIN, GPIO_NUM_NC))
     {
         ESP_LOGE(TAG, "Failed to initialize touch controller");
+        ESP_LOGW(TAG, "Continuing without touch functionality");
         return;
     }
+    
+    ESP_LOGI(TAG, "Touch controller initialized successfully");
 
-    // タッチコールバック関数の登録
-    gt911_register_callback(&g_touch_device, touch_event_handler, &epd);
+    // タッチタスクのパラメータを設定
+    touch_params.epd = &epd;
+    touch_params.touch_device = &g_touch_device;
+    touch_params.running = true;
+
+    // タッチハンドリングタスクを作成
+    xTaskCreate(touch_handling_task, "touch_task", 4096, &touch_params, 5, &touch_task_handle);
+    if (touch_task_handle == NULL) {
+        ESP_LOGE(TAG, "Failed to create touch handling task");
+    } else {
+        ESP_LOGI(TAG, "Touch handling task created successfully");
+    }
 
     ESP_LOGI(TAG, "Touch test application ready");
     ESP_LOGI(TAG, "Touch the screen to draw circles");
+    
+    // app_main関数はここで終了しますが、タッチハンドリングタスクは継続して実行されます
+}
 
-    // メインループ (タッチ処理はコールバックで行われるため、ここでは何もしない)
-    while (1)
+/**
+ * @brief タッチハンドリングタスク - 座標取得と丸の描画を行う
+ * @param pvParameters タスクパラメータ（TouchTaskParams構造体へのポインタ）
+ */
+static void touch_handling_task(void *pvParameters)
+{
+    TouchTaskParams *params = (TouchTaskParams *)pvParameters;
+    EPDWrapper *epd = params->epd;
+    GT911_Device *touch_device = params->touch_device;
+    
+    // 前回のステータス値を保存する変数
+    uint8_t last_status = 0;
+    // 描画した円の数をカウント
+    int circle_count = 0;
+    
+    int width = epd_wrapper_get_width(epd);
+    int height = epd_wrapper_get_height(epd);
+
+    ESP_LOGI(TAG, "Touch handling task started");
+
+    // メインループ - ポーリングでタッチ検出
+    while (params->running)
     {
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        // ステータスレジスタを読み取り
+        uint8_t status;
+        if (gt911_read_registers(touch_device, GT911_REG_STATUS, &status, 1))
+        {
+            // ステータスの変化を確認
+            if (status != last_status)
+            {
+                ESP_LOGI(TAG, "Status register changed: 0x%02X -> 0x%02X", last_status, status);
+                last_status = status;
+            }
+
+            // タッチイベントが検出された場合
+            if (status & GT911_STATUS_TOUCH)
+            {
+                // タッチポイント数を取得
+                uint8_t touch_points = status & GT911_STATUS_TOUCH_MASK;
+                if (touch_points > GT911_MAX_TOUCH_POINTS)
+                {
+                    touch_points = GT911_MAX_TOUCH_POINTS;
+                }
+
+                ESP_LOGI(TAG, "Touch detected: %d point(s)", touch_points);
+
+                // すべてのタッチポイントを処理
+                for (uint8_t i = 0; i < touch_points; i++)
+                {
+                    uint8_t point_data[8]; // 各ポイントのデータは8バイト
+                    uint16_t point_addr = GT911_REG_TOUCH1 + (i * 8); // 各ポイントのアドレス計算
+
+                    if (gt911_read_registers(touch_device, point_addr, point_data, 8))
+                    {
+                        // X座標と Y座標を取得 (リトルエンディアン)
+                        uint16_t raw_x = point_data[0] | (point_data[1] << 8);
+                        uint16_t raw_y = point_data[2] | (point_data[3] << 8);
+                        
+                        // サイズも取得できる場合
+                        uint16_t size = point_data[4] | (point_data[5] << 8);
+
+                        ESP_LOGI(TAG, "Raw touch point %d: x=%d, y=%d, size=%d", i, raw_x, raw_y, size);
+
+                        // 90度時計回りのずれを補正（座標変換）
+                        uint16_t adjusted_x = raw_y;
+                        uint16_t adjusted_y = width - raw_x -426;
+                        
+                        // 補正後の座標が範囲内かチェック
+                        if (adjusted_x < width && adjusted_y < height) {
+                            ESP_LOGI(TAG, "Adjusted touch point %d: x=%d, y=%d", i, adjusted_x, adjusted_y);
+                            
+                            // タッチ位置に円を描画（補正後の座標を使用）
+                            epd_wrapper_fill_circle(epd, adjusted_x, adjusted_y, 10, 0x00); // 黒い円を描画
+                            circle_count++;
+
+                            // 画面を更新 (部分更新モードを使用)
+                            epd_wrapper_update_screen(epd, MODE_DU);
+                        } else {
+                            ESP_LOGW(TAG, "Adjusted coordinates out of bounds: (%d, %d)", adjusted_x, adjusted_y);
+                        }
+                    }
+                }
+
+                // ステータスレジスタをクリア
+                gt911_clear_status(touch_device);
+            }
+        }
+        else
+        {
+            ESP_LOGW(TAG, "Failed to read status register");
+        }
+
+        // 10個の円を描画したら画面をクリア
+        if (circle_count >= 10)
+        {
+            ESP_LOGI(TAG, "Clearing screen after %d circles", circle_count);
+            epd_wrapper_fill(epd, 0xFF); // 白で塗りつぶし
+            epd_wrapper_draw_rect(epd, 10, 10, width - 20, height - 20, 0x00);
+            epd_wrapper_update_screen(epd, MODE_GC16);
+            circle_count = 0;
+        }
+
+        // ポーリング間隔
+        vTaskDelay(50 / portTICK_PERIOD_MS);
     }
+
+    // タスク終了
+    ESP_LOGI(TAG, "Touch handling task terminated");
+    vTaskDelete(NULL);
 }
 
 void draw_sprash(EPDWrapper *epd)
@@ -284,35 +498,6 @@ void transition(EPDWrapper *epd, const uint8_t *image_data, TransitionType type)
     // 6. トランジションリソースの解放
     ESP_LOGI(TAG, "Transition completed, releasing resources");
     epd_transition_deinit(epd, &transition);
-}
-
-
-// タッチイベントコールバック関数
-static void touch_event_handler(GT911_Device* device, void* user_data)
-{
-    EPDWrapper *e_epd = (EPDWrapper *)user_data;
-
-    // アクティブなタッチポイントがあるか確認
-    if (device->active_points > 0)
-    {
-        for (uint8_t i = 0; i < device->active_points; i++)
-        {
-            // 押されている場合のみ処理
-            if (device->points[i].is_pressed)
-            {
-                int x = device->points[i].x;
-                int y = device->points[i].y;
-
-                ESP_LOGI(TAG, "Touch detected at (%d,%d)", x, y);
-
-                // タッチ位置に円を描画
-                epd_wrapper_fill_circle(e_epd, x, y, 10, 0x00); // 黒い円を描画
-
-                // 画面を更新 (部分更新モードを使用)
-                epd_wrapper_update_screen(e_epd, MODE_DU);
-            }
-        }
-    }
 }
 
 // 既存の app_main 関数に追加するテキスト表示のテスト関数
