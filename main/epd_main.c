@@ -33,6 +33,12 @@
 #include "gt911.h"
 static const char *TAG = "touch_test";
 
+// SDカード、UART
+#include "sdcard_manager.h"
+#include "uart_command.h"
+#include "file_transfer.h"
+#include "command_handlers.h"
+
 // グローバル変数
 static EPDWrapper epd;
 static GT911_Device g_touch_device;
@@ -50,7 +56,8 @@ static void touch_handling_task(void *pvParameters);
 static TaskHandle_t touch_task_handle = NULL;
 
 // タスク間で共有するデータ構造
-typedef struct {
+typedef struct
+{
     EPDWrapper *epd;
     GT911_Device *touch_device;
     bool running;
@@ -152,9 +159,49 @@ void app_main(void)
     epd_wrapper_power_on(&epd);
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
+    // SDカード初期化
+    if (sdcard_init() != ESP_OK)
+    {
+        ESP_LOGW(TAG, "SDカードの初期化に失敗しました。一部機能が制限されます。");
+    }
+    else
+    {
+        ESP_LOGI(TAG, "SDカードが正常に初期化されました。");
+
+        // SDカード情報表示
+        uint64_t total_size, free_size;
+        if (sdcard_get_info(&total_size, &free_size))
+        {
+            ESP_LOGI(TAG, "SDカード: 合計 %.2f MB, 空き %.2f MB",
+                     total_size / (1024.0 * 1024.0),
+                     free_size / (1024.0 * 1024.0));
+        }
+    }
+
+    // ファイル転送モジュール初期化
+    file_transfer_init();
+
+    // コマンドハンドラ初期化
+    command_handlers_init();
+
+    // UARTコマンドモジュール初期化
+    if (!uart_command_init())
+    {
+        ESP_LOGE(TAG, "UART通信の初期化に失敗しました");
+        return;
+    }
+
+    // コマンドハンドラを登録
+    uart_register_command_handler(command_handler_process);
+
+    // UARTタスク開始
+    uart_command_start();
+
+    ESP_LOGI(TAG, "システム初期化完了。コマンド待機中...");
+
     // 画面を白で初期化
     ESP_LOGI(TAG, "Clearing the display");
-    epd_wrapper_clear_cycles(&epd,2);
+    epd_wrapper_clear_cycles(&epd, 2);
 
     // 画面の枠を描画
     int width = epd_wrapper_get_width(&epd);
@@ -181,7 +228,7 @@ void app_main(void)
         ESP_LOGW(TAG, "Continuing without touch functionality");
         return;
     }
-    
+
     ESP_LOGI(TAG, "Touch controller initialized successfully");
 
     // タッチタスクのパラメータを設定
@@ -191,15 +238,18 @@ void app_main(void)
 
     // タッチハンドリングタスクを作成
     xTaskCreate(touch_handling_task, "touch_task", 4096, &touch_params, 5, &touch_task_handle);
-    if (touch_task_handle == NULL) {
+    if (touch_task_handle == NULL)
+    {
         ESP_LOGE(TAG, "Failed to create touch handling task");
-    } else {
+    }
+    else
+    {
         ESP_LOGI(TAG, "Touch handling task created successfully");
     }
 
     ESP_LOGI(TAG, "Touch test application ready");
     ESP_LOGI(TAG, "Touch the screen to draw circles");
-    
+
     // app_main関数はここで終了しますが、タッチハンドリングタスクは継続して実行されます
 }
 
@@ -212,12 +262,12 @@ static void touch_handling_task(void *pvParameters)
     TouchTaskParams *params = (TouchTaskParams *)pvParameters;
     EPDWrapper *epd = params->epd;
     GT911_Device *touch_device = params->touch_device;
-    
+
     // 前回のステータス値を保存する変数
     uint8_t last_status = 0;
     // 描画した円の数をカウント
     int circle_count = 0;
-    
+
     int width = epd_wrapper_get_width(epd);
     int height = epd_wrapper_get_height(epd);
 
@@ -252,7 +302,7 @@ static void touch_handling_task(void *pvParameters)
                 // すべてのタッチポイントを処理
                 for (uint8_t i = 0; i < touch_points; i++)
                 {
-                    uint8_t point_data[8]; // 各ポイントのデータは8バイト
+                    uint8_t point_data[8];                            // 各ポイントのデータは8バイト
                     uint16_t point_addr = GT911_REG_TOUCH1 + (i * 8); // 各ポイントのアドレス計算
 
                     if (gt911_read_registers(touch_device, point_addr, point_data, 8))
@@ -260,7 +310,7 @@ static void touch_handling_task(void *pvParameters)
                         // X座標と Y座標を取得 (リトルエンディアン)
                         uint16_t raw_x = point_data[0] | (point_data[1] << 8);
                         uint16_t raw_y = point_data[2] | (point_data[3] << 8);
-                        
+
                         // サイズも取得できる場合
                         uint16_t size = point_data[4] | (point_data[5] << 8);
 
@@ -268,19 +318,22 @@ static void touch_handling_task(void *pvParameters)
 
                         // 90度時計回りのずれを補正（座標変換）
                         uint16_t adjusted_x = raw_y;
-                        uint16_t adjusted_y = width - raw_x -426;
-                        
+                        uint16_t adjusted_y = width - raw_x - 426;
+
                         // 補正後の座標が範囲内かチェック
-                        if (adjusted_x < width && adjusted_y < height) {
+                        if (adjusted_x < width && adjusted_y < height)
+                        {
                             ESP_LOGI(TAG, "Adjusted touch point %d: x=%d, y=%d", i, adjusted_x, adjusted_y);
-                            
+
                             // タッチ位置に円を描画（補正後の座標を使用）
                             epd_wrapper_fill_circle(epd, adjusted_x, adjusted_y, 10, 0x00); // 黒い円を描画
                             circle_count++;
 
                             // 画面を更新 (部分更新モードを使用)
                             epd_wrapper_update_screen(epd, MODE_DU);
-                        } else {
+                        }
+                        else
+                        {
                             ESP_LOGW(TAG, "Adjusted coordinates out of bounds: (%d, %d)", adjusted_x, adjusted_y);
                         }
                     }
