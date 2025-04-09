@@ -38,11 +38,26 @@ esp_err_t sdcard_init(void)
     // SDカード設定
     ESP_LOGI(TAG, "SDカードを初期化します");
 
-    // ホスト設定
+    // M5PaperS3の正しいピン設定
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-
+    
+    // SDMMCホストの設定カスタマイズ
+    host.flags = SDMMC_HOST_FLAG_4BIT;
+    host.slot = SDMMC_HOST_SLOT_1;
+    host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+    
     // スロット設定
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+    
+    // M5PaperS3の正しいピン設定
+    slot_config.clk = GPIO_NUM_39;    // SCK
+    slot_config.cmd = GPIO_NUM_38;    // MOSI/CMD
+    slot_config.d0 = GPIO_NUM_40;     // MISO/D0
+    slot_config.d1 = GPIO_NUM_NC;     // 未使用
+    slot_config.d2 = GPIO_NUM_NC;     // 未使用
+    slot_config.d3 = GPIO_NUM_47;     // CS/D3
+    slot_config.width = 1;            // 1-bit SDモード
+    slot_config.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
 
     // マウント設定
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
