@@ -7,15 +7,8 @@ idf_component_register(
         "epd_transition.c"
         "epd_text.c"
         "gt911.c"
-        "sdcard_manager.c"
-        "uart_command.c"
-        "file_transfer.c"
-        "command_handlers.c"
     PRIV_REQUIRES 
-        "epdiy" 
-        "driver" 
-        "esp_timer"
-        "fatfs"
+        "epdiy"
     INCLUDE_DIRS 
         "."
 )

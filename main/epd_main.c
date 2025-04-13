@@ -33,11 +33,6 @@
 #include "gt911.h"
 static const char *TAG = "touch_test";
 
-// SDカード、UART
-#include "sdcard_manager.h"
-#include "uart_command.h"
-#include "file_transfer.h"
-#include "command_handlers.h"
 
 // グローバル変数
 static EPDWrapper epd;
@@ -143,7 +138,7 @@ static void i2c_scan(i2c_port_t i2c_port)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Starting Touch Test Application");
+    ESP_LOGI(TAG, "Starting M5Paper S3 Application");
 
     // EPD Wrapperの初期化
     ESP_LOGI(TAG, "Initializing EPD Wrapper");
@@ -159,46 +154,6 @@ void app_main(void)
     epd_wrapper_power_on(&epd);
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-    // SDカード初期化
-    if (sdcard_init() != ESP_OK)
-    {
-        ESP_LOGW(TAG, "SDカードの初期化に失敗しました。一部機能が制限されます。");
-    }
-    else
-    {
-        ESP_LOGI(TAG, "SDカードが正常に初期化されました。");
-
-        // SDカード情報表示
-        uint64_t total_size, free_size;
-        if (sdcard_get_info(&total_size, &free_size))
-        {
-            ESP_LOGI(TAG, "SDカード: 合計 %.2f MB, 空き %.2f MB",
-                     total_size / (1024.0 * 1024.0),
-                     free_size / (1024.0 * 1024.0));
-        }
-    }
-
-    // ファイル転送モジュール初期化
-    file_transfer_init();
-
-    // コマンドハンドラ初期化
-    command_handlers_init();
-
-    // UARTコマンドモジュール初期化
-    if (!uart_command_init())
-    {
-        ESP_LOGE(TAG, "UART通信の初期化に失敗しました");
-        return;
-    }
-
-    // コマンドハンドラを登録
-    uart_register_command_handler(command_handler_process);
-
-    // UARTタスク開始
-    uart_command_start();
-
-    ESP_LOGI(TAG, "システム初期化完了。コマンド待機中...");
-
     // 画面を白で初期化
     ESP_LOGI(TAG, "Clearing the display");
     epd_wrapper_clear_cycles(&epd, 2);
@@ -206,6 +161,14 @@ void app_main(void)
     // 画面の枠を描画
     int width = epd_wrapper_get_width(&epd);
     int height = epd_wrapper_get_height(&epd);
+    epd_wrapper_draw_rect(&epd, 10, 10, width - 20, height - 20, 0x00);
+
+    // 画面にUART通信が有効であることを表示
+    EPDTextConfig text_config;
+    epd_text_config_init(&text_config, &Mplus2_Light_16);
+    text_config.text_color = 0x00; // 黒色テキスト
+
+    // 画面の枠を描画
     epd_wrapper_draw_rect(&epd, 10, 10, width - 20, height - 20, 0x00);
     epd_wrapper_update_screen(&epd, MODE_GC16);
 

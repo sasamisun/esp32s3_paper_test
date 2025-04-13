@@ -1,0 +1,17 @@
+; M5Paper S3 UART PING Command Test
+; BEGIN
+
+; バイナリパケットを送信する関数
+sendpacket:
+  ; START_MARKER(0xAA), CMD_PING(0x01), LENGTH_L(0), LENGTH_H(0), CRC_L(0x01), CRC_H(0xFF), END_MARKER(0x55)
+  mputs #$AA#$01#$00#$00#$01#$FF#$55
+  return
+
+; メイン処理
+; PING コマンドの送信
+call sendpacket
+
+; 応答表示
+pause 1
+
+; END
