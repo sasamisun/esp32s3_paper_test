@@ -25,7 +25,7 @@
 #include "bg2.h"
 // #include "ichi.h"
 
-// epd_main.c のインクルード部分に追加
+// 文字とフォント
 #include "epd_text.h"
 #include "Mplus2-Light_16.h"
 
@@ -33,6 +33,8 @@
 #include "gt911.h"
 static const char *TAG = "touch_test";
 
+// usb msc
+#include "usb_msc.h"
 
 // グローバル変数
 static EPDWrapper epd;
@@ -136,6 +138,93 @@ static void i2c_scan(i2c_port_t i2c_port)
     ESP_LOGI(TAG, "I2C scan completed");
 }
 
+// テスト用
+void display_text_on_epd(const char* text)
+{
+    // EPD Wrapperが初期化済みであることを前提とします
+    
+    // 画面をクリア
+    epd_wrapper_fill(&epd, 0xFF);  // 白でクリア
+    
+    // テキスト設定の初期化
+    EPDTextConfig text_config;
+    epd_text_config_init(&text_config, &Mplus2_Light_16);  // 適切なフォントを使用
+    
+    // テキスト色を黒に設定
+    text_config.text_color = 0x00;
+    
+    // 画面サイズを取得
+    int width = epd_wrapper_get_width(&epd);
+    int height = epd_wrapper_get_height(&epd);
+    
+    // テキスト描画エリアを設定
+    EpdRect text_area = {
+        .x = 20,
+        .y = 20,
+        .width = width - 40,
+        .height = height - 40
+    };
+    
+    // テキストを表示
+    int lines = epd_text_draw_multiline(&epd, &text_area, text, &text_config);
+    ESP_LOGI(TAG, "Displayed %d lines of text", lines);
+    
+    // 画面更新
+    epd_wrapper_update_screen(&epd, MODE_GC16);
+}
+
+// テスト用、SDカードからtest.txtを読み込んで表示する
+void read_and_display_text_file(void)
+{
+    // SDカードのマウントポイントを取得
+    const char* mount_point = usb_msc_get_mount_point();
+    
+    // ファイルパスを作成
+    char filepath[64];
+    snprintf(filepath, sizeof(filepath), "%s/test.txt", mount_point);
+    
+    // ファイルを開く
+    FILE* f = fopen(filepath, "r");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file: %s", filepath);
+        return;
+    }
+    
+    // ファイルサイズを取得
+    fseek(f, 0, SEEK_END);
+    long filesize = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    
+    // ファイル内容を読み込むバッファを確保
+    char* buffer = (char*)malloc(filesize + 1);
+    if (buffer == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate memory for file content");
+        fclose(f);
+        return;
+    }
+    
+    // ファイル内容を読み込む
+    size_t read_size = fread(buffer, 1, filesize, f);
+    fclose(f);
+    
+    if (read_size != filesize) {
+        ESP_LOGE(TAG, "Failed to read entire file");
+        free(buffer);
+        return;
+    }
+    
+    // 文字列の終端を追加
+    buffer[filesize] = '\0';
+    
+    // ファイル内容をログに出力（確認用）
+    ESP_LOGI(TAG, "File content: %s", buffer);
+    
+    // 電子ペーパーに表示
+    display_text_on_epd(buffer);
+    
+    free(buffer);
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "Starting M5Paper S3 Application");
@@ -154,6 +243,34 @@ void app_main(void)
     epd_wrapper_power_on(&epd);
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
+    // SDカードとUSB MSCの初期化を追加
+    esp_err_t ret = usb_msc_init_sd_card();
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to initialize SD card, USB MSC functionality will not be available");
+    }
+    else
+    {
+        ESP_LOGI(TAG, "SD card initialized successfully");
+
+        /* 一旦コメントアウト。マスストレージとして使わないので。
+        // USB MSC機能の初期化
+        ret = usb_msc_init();
+        if (ret != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to initialize USB MSC");
+        }
+        else
+        {
+            ESP_LOGI(TAG, "USB MSC initialized successfully");
+            // アプリケーションがSDカードを使用できるようにマウント
+            usb_msc_mount_card();
+        }
+        //*/
+
+        read_and_display_text_file();
+    }
+
     // 画面を白で初期化
     ESP_LOGI(TAG, "Clearing the display");
     epd_wrapper_clear_cycles(&epd, 2);
@@ -162,11 +279,6 @@ void app_main(void)
     int width = epd_wrapper_get_width(&epd);
     int height = epd_wrapper_get_height(&epd);
     epd_wrapper_draw_rect(&epd, 10, 10, width - 20, height - 20, 0x00);
-
-    // 画面にUART通信が有効であることを表示
-    EPDTextConfig text_config;
-    epd_text_config_init(&text_config, &Mplus2_Light_16);
-    text_config.text_color = 0x00; // 黒色テキスト
 
     // 画面の枠を描画
     epd_wrapper_draw_rect(&epd, 10, 10, width - 20, height - 20, 0x00);

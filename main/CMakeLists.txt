@@ -7,8 +7,14 @@ idf_component_register(
         "epd_transition.c"
         "epd_text.c"
         "gt911.c"
+        "usb_msc.c"
+    REQUIRES 
+        "driver"
+        "esp_timer"
+        "fatfs"
     PRIV_REQUIRES 
         "epdiy"
+        "esp_tinyusb"
     INCLUDE_DIRS 
         "."
 )
