@@ -243,6 +243,11 @@ void app_main(void)
     epd_wrapper_power_on(&epd);
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
+    
+    // 画面を白で初期化
+    ESP_LOGI(TAG, "Clearing the display");
+    epd_wrapper_clear_cycles(&epd, 2);
+    
     // SDカードとUSB MSCの初期化を追加
     esp_err_t ret = usb_msc_init_sd_card();
     if (ret != ESP_OK)
@@ -267,13 +272,10 @@ void app_main(void)
             usb_msc_mount_card();
         }
         //*/
-
+        //usb_msc_mount_card();
         read_and_display_text_file();
     }
 
-    // 画面を白で初期化
-    ESP_LOGI(TAG, "Clearing the display");
-    epd_wrapper_clear_cycles(&epd, 2);
 
     // 画面の枠を描画
     int width = epd_wrapper_get_width(&epd);
